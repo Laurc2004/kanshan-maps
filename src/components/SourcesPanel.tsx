@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import type { SearchResultItem } from "@/lib/zhihu";
 import type { ViewpointGraph } from "@/lib/viewpoints";
 
@@ -22,11 +23,41 @@ export default function SourcesPanel({
   onClose: () => void;
 }) {
   const showSources = items.length > 0;
+  // 生成出新素材时自动切回素材页：用户手动切热榜后重置
+  const [tab, setTab] = useState<"sources" | "hot">("sources");
+  const [lastItemsCount, setLastItemsCount] = useState(0);
+  if (items.length !== lastItemsCount) {
+    setLastItemsCount(items.length);
+    if (items.length > 0) setTab("sources");
+  }
+
+  const showHot = !showSources || tab === "hot";
 
   return (
     <aside className="flex h-full w-72 flex-col border-r border-[#e8e8e3] bg-white">
       <div className="flex items-center justify-between border-b border-[#e8e8e3] px-4 py-3">
-        <h2 className="text-sm font-semibold text-[#1a1a1a]">{showSources ? "知乎素材" : "知乎热榜"}</h2>
+        {showSources ? (
+          <div className="flex rounded-full border border-gray-200 bg-[#fafaf7] p-0.5 text-xs">
+            {(
+              [
+                { id: "sources", label: "知乎素材" },
+                { id: "hot", label: "知乎热榜" },
+              ] as const
+            ).map((t) => (
+              <button
+                key={t.id}
+                onClick={() => setTab(t.id)}
+                className={`rounded-full px-3 py-1 transition ${
+                  tab === t.id ? "bg-[#0066ff] text-white" : "text-gray-500 hover:text-[#0066ff]"
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <h2 className="text-sm font-semibold text-[#1a1a1a]">知乎热榜</h2>
+        )}
         <button
           onClick={onClose}
           className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
@@ -38,15 +69,15 @@ export default function SourcesPanel({
         </button>
       </div>
       <div className="thin-scroll flex-1 overflow-y-auto p-3">
-        {!showSources && hotItems.length === 0 && (
+        {showHot && hotItems.length === 0 && (
           <p className="pt-16 text-center text-xs text-gray-400">热榜加载中…</p>
         )}
-        {!showSources &&
+        {showHot &&
           hotItems.map((it, i) => (
             <button
               key={it.Url || i}
               onClick={() => onPickHot(it.Title)}
-              className="group mb-2 block w-full rounded-lg border border-[#eee] p-3 text-left transition hover:border-[#0066ff]/40 hover:shadow-sm"
+              className="group mb-2 block w-full rounded-lg border border-[#eee] p-3 text-left transition hover:border-[#0066ff]/40 hover:bg-[#f7faff]"
               title="点击生成这张观点对照图"
             >
               <div className="mb-1 flex items-start gap-2">
@@ -60,10 +91,9 @@ export default function SourcesPanel({
                 </p>
               </div>
               {it.Summary && <p className="line-clamp-2 pl-5 text-[11px] leading-4 text-gray-500">{it.Summary}</p>}
-              <span className="mt-1.5 hidden pl-5 text-[10px] text-[#0066ff] group-hover:inline">一键看山 →</span>
             </button>
           ))}
-        {showSources &&
+        {!showHot &&
           items.map((it, i) => {
             const used =
               graphMode === "viewpoint" && graph

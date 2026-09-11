@@ -474,15 +474,9 @@ export default function Home() {
             </>
           ) : (
             <div className="flex h-full flex-col items-center justify-center gap-6 text-center">
-              {/* 用三帧动图拼一个"呼吸感"场景，避免单图疲劳 */}
-              <div className="flex items-end gap-4">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src="/liukanshan/sway.gif" alt="" className="h-28 w-28 rounded-2xl opacity-90" />
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src="/liukanshan/hello.gif" alt="" className="h-36 w-36 rounded-2xl shadow-sm" />
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src="/liukanshan/ball.gif" alt="" className="h-28 w-28 rounded-2xl opacity-90" />
-              </div>
+              {/* 单张 hello 动图，无框无阴影 */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/liukanshan/hello.gif" alt="" className="h-36 w-36" />
               <div>
                 <h2 className="mb-2 text-2xl font-bold text-[#1a1a1a]">
                   看山是山，看山不是山，看山还是山

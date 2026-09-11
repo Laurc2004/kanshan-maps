@@ -23,7 +23,15 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       lang="zh-CN"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        {/* Excalidraw 字体资源路径：Xiaolai/Excalifont 从本地 public 服务，不依赖 esm.sh CDN */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `window.EXCALIDRAW_ASSET_PATH = "/excalidraw-assets/";`,
+          }}
+        />
+        {children}
+      </body>
     </html>
   );
 }
