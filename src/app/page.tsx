@@ -45,6 +45,9 @@ export default function Home() {
   const followeesRef = useRef<Set<string>>(new Set());
   const graphRef = useRef<ViewpointGraph | null>(null);
   const renderGraphRef = useRef<(g: ViewpointGraph, f?: Set<string>, m?: Mode) => void>(() => {});
+  const [showAgent, setShowAgent] = useState(true); // 右栏可收缩
+  const [pendingHot, setPendingHot] = useState<string | null>(null); // 热榜确认弹窗
+  const [generating, setGenerating] = useState(false); // 画板生成中遮罩
 
   // 启动：读登录态 + 处理 OAuth 回调错误参数 + 拉热榜
   useEffect(() => {
@@ -143,6 +146,9 @@ export default function Home() {
   const generate = useCallback(async () => {
     if (!question.trim() || loading) return;
     setLoading(true);
+    setGenerating(true); // 画板进入生成态
+    setBoardMounted(false); // 清空旧画板，全屏显示生成态
+    apiRef.current = null; // 断开旧 Excalidraw 实例
     setError(null);
     setStatus("正在连接看山工作台…");
     try {
@@ -198,21 +204,24 @@ export default function Home() {
       setStatus(null);
     } finally {
       setLoading(false);
+      setGenerating(false);
     }
   }, [question, loading, engine, mode, renderGraph]);
 
-  // 热榜点击：填充问题并直接生成
-  const pickHot = useCallback(
-    (title: string) => {
-      setQuestion(title);
-      // 等 state 生效后触发
-      setTimeout(() => {
-        const btn = document.querySelector<HTMLButtonElement>('header button[data-role="generate"]');
-        btn?.click();
-      }, 0);
-    },
-    []
-  );
+  // 热榜点击：弹窗确认后生成
+  const pickHot = useCallback((title: string) => {
+    setPendingHot(title);
+  }, []);
+  const confirmHot = useCallback(() => {
+    if (!pendingHot) return;
+    setQuestion(pendingHot);
+    setPendingHot(null);
+    // 等 state 生效后触发
+    setTimeout(() => {
+      const btn = document.querySelector<HTMLButtonElement>('header button[data-role="generate"]');
+      btn?.click();
+    }, 0);
+  }, [pendingHot]);
 
   // Agent 对话修改后的 graph 回灌画板
   const applyAgentGraph = useCallback(
@@ -254,6 +263,19 @@ export default function Home() {
                 </button>
               ))}
             </div>
+            <button
+              onClick={() => setShowAgent((v) => !v)}
+              title={showAgent ? "隐藏看山助手" : "显示看山助手"}
+              className={`rounded-full border p-2 transition ${
+                showAgent
+                  ? "border-[#0066ff]/30 bg-[#f0f5ff] text-[#0066ff]"
+                  : "border-gray-200 text-gray-400 hover:border-[#0066ff]/30 hover:text-[#0066ff]"
+              }`}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M8 10h.01M12 10h.01M16 10h.01M21 12a9 9 0 01-9 9 9 9 0 01-4-.8L3 21l1-3.2A9 9 0 1121 12z" />
+              </svg>
+            </button>
             <button
               onClick={() => setShowSources((v) => !v)}
               title={showSources ? "隐藏素材栏" : "显示素材栏"}
@@ -441,7 +463,23 @@ export default function Home() {
           {boardMounted ? (
             <>
               <Excalidraw excalidrawAPI={onApiReady} viewModeEnabled={false} gridModeEnabled />
-              {/* 画板右上角：导出 .excalidraw（评委/用户可下载后现场拖改导入） */}
+              {/* 生成中遮罩：盖在旧图上 */}
+              {generating && (
+                <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-5 bg-white/85 backdrop-blur-sm">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src="/liukanshan/working.gif" alt="生成中" className="h-28 w-28" />
+                  <div className="flex flex-col items-center gap-3">
+                    <p className="text-sm font-medium text-[#1a1a1a]">刘看山正在为你炼图…</p>
+                    <div className="h-1 w-48 overflow-hidden rounded-full bg-[#e8e8e3]">
+                      <div className="h-full w-1/3 rounded-full bg-[#0066ff]" style={{ animation: "shimmer 1.2s ease-in-out infinite" }} />
+                    </div>
+                    <p className="max-w-xs text-center text-xs leading-5 text-gray-500">
+                      正在抓取知乎高赞回答，提炼各方立场与论据
+                    </p>
+                  </div>
+                </div>
+              )}
+              {/* 画板右下角：导出 .excalidraw（评委/用户可下载后现场拖改导入） */}
               {graph && (
                 <button
                   onClick={() => {
@@ -462,7 +500,7 @@ export default function Home() {
                     a.click();
                     URL.revokeObjectURL(a.href);
                   }}
-                  className="absolute right-3 top-3 z-10 flex items-center gap-1.5 rounded-full border border-gray-200 bg-white/90 px-3 py-1.5 text-xs text-gray-500 shadow-sm backdrop-blur transition hover:border-[#0066ff]/50 hover:text-[#0066ff]"
+                  className="absolute bottom-14 right-3 z-10 flex items-center gap-1.5 rounded-full border border-gray-200 bg-white/90 px-3 py-1.5 text-xs text-gray-500 shadow-sm backdrop-blur transition hover:border-[#0066ff]/50 hover:text-[#0066ff]"
                   title="下载 .excalidraw 画板文件，可在 excalidraw.com 继续编辑"
                 >
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -473,40 +511,110 @@ export default function Home() {
               )}
             </>
           ) : (
-            <div className="flex h-full flex-col items-center justify-center gap-6 text-center">
-              {/* 单张 hello 动图，无框无阴影 */}
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/liukanshan/hello.gif" alt="" className="h-36 w-36" />
-              <div>
-                <h2 className="mb-2 text-2xl font-bold text-[#1a1a1a]">
-                  看山是山，看山不是山，看山还是山
-                </h2>
-                <p className="text-sm leading-6 text-gray-500">
-                  输入一个问题，自动抓取知乎高赞回答，提炼各方立场与论据
-                  <br />
-                  生成一张可以和 AI 一起打磨的手绘观点对照图
-                </p>
-              </div>
-              <div className="flex flex-wrap justify-center gap-2 text-sm">
-                {(mode === "viewpoint"
-                  ? ["年轻人该不该买房", "考研还是就业", "AI会取代程序员吗"]
-                  : ["前端入门", "数据分析", "考研政治"]
-                ).map((s) => (
-                  <button
-                    key={s}
-                    onClick={() => setQuestion(s)}
-                    className="rounded-full border border-gray-200 bg-white px-3.5 py-1.5 text-xs text-gray-500 transition hover:border-[#0066ff]/50 hover:text-[#0066ff]"
-                  >
-                    {s}
-                  </button>
-                ))}
-              </div>
+            <div className="relative flex h-full flex-col items-center justify-center gap-6 text-center">
+              {/* 生成中：working.gif + 进度条 + 状态文案 */}
+              {generating ? (
+                <>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src="/liukanshan/working.gif" alt="生成中" className="h-32 w-32" />
+                  <div className="flex flex-col items-center gap-3">
+                    <p className="text-sm font-medium text-[#1a1a1a]">刘看山正在为你炼图…</p>
+                    <div className="h-1 w-48 overflow-hidden rounded-full bg-[#e8e8e3]">
+                      <div className="h-full w-1/3 rounded-full bg-[#0066ff]" style={{ animation: "shimmer 1.2s ease-in-out infinite" }} />
+                    </div>
+                    <p className="max-w-xs text-xs leading-5 text-gray-500">
+                      正在抓取知乎高赞回答，提炼各方立场与论据
+                    </p>
+                  </div>
+                </>
+              ) : (
+                <>
+                  {/* 单张 hello 动图，无框无阴影 */}
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src="/liukanshan/hello.gif" alt="" className="h-36 w-36" />
+                  <div>
+                    <h2 className="mb-2 text-2xl font-bold text-[#1a1a1a]">
+                      看山是山，看山不是山，看山还是山
+                    </h2>
+                    <p className="text-sm leading-6 text-gray-500">
+                      输入一个问题，自动抓取知乎高赞回答，提炼各方立场与论据
+                      <br />
+                      生成一张可以和 AI 一起打磨的手绘观点对照图
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap justify-center gap-2 text-sm">
+                    {(mode === "viewpoint"
+                      ? ["年轻人该不该买房", "考研还是就业", "AI会取代程序员吗"]
+                      : ["前端入门", "数据分析", "考研政治"]
+                    ).map((s) => (
+                      <button
+                        key={s}
+                        onClick={() => setQuestion(s)}
+                        className="rounded-full border border-gray-200 bg-white px-3.5 py-1.5 text-xs text-gray-500 transition hover:border-[#0066ff]/50 hover:text-[#0066ff]"
+                      >
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
             </div>
           )}
         </div>
 
-        <AgentPanel graph={graph} engine={engine} busy={loading} onApply={applyAgentGraph} />
+        {showAgent && (
+          <AgentPanel graph={graph} engine={engine} busy={loading} onApply={applyAgentGraph} onClose={() => setShowAgent(false)} />
+        )}
+        {!showAgent && (
+          <button
+            onClick={() => setShowAgent(true)}
+            title="展开看山助手"
+            className="flex w-10 shrink-0 items-center justify-center border-l border-[#e8e8e3] bg-white text-gray-400 transition hover:bg-[#f0f5ff] hover:text-[#0066ff]"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M15 18l-6-6 6-6" />
+            </svg>
+          </button>
+        )}
       </div>
+      {/* 热榜确认弹窗 */}
+      {pendingHot && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-sm"
+          onClick={() => setPendingHot(null)}
+        >
+          <div
+            className="mx-4 w-full max-w-sm rounded-2xl border border-[#e8e8e3] bg-white p-5 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-3 flex items-center gap-2">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/liukanshan/idle.gif" alt="" className="h-8 w-8" />
+              <h3 className="text-sm font-semibold text-[#1a1a1a]">生成观点对照图</h3>
+            </div>
+            <p className="mb-1 text-xs leading-5 text-gray-600">
+              确定要为这条热榜生成一张观点对照图吗？
+            </p>
+            <p className="mb-4 line-clamp-2 rounded-lg bg-[#fafaf7] px-3 py-2 text-xs font-medium leading-5 text-[#1a1a1a]">
+              {pendingHot}
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setPendingHot(null)}
+                className="rounded-full border border-gray-200 px-4 py-1.5 text-xs text-gray-500 transition hover:bg-gray-50"
+              >
+                取消
+              </button>
+              <button
+                onClick={confirmHot}
+                className="rounded-full bg-[#0066ff] px-4 py-1.5 text-xs font-medium text-white transition hover:bg-[#0052cc]"
+              >
+                确定生成
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

@@ -23,3 +23,45 @@ body {
 .thin-scroll::-webkit-scrollbar-track {
   background: transparent;
 }
+
+/* 生成中进度条动画 */
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(300%); }
+}
+
+/* Excalidraw 样式适配项目：精简 UI、统一配色 */
+.excalidraw {
+  --color-primary: #0066ff;
+  --color-primary-darker: #0052cc;
+  --color-primary-light: #e8f0ff;
+  --color-gray-100: #1a1a1a;
+  --color-gray-40: #868e96;
+  --color-gray-50: #757575;
+  --color-gray-60: #5c5c5c;
+  --color-surface-low: #f0f0ec;
+  --color-surface-lowest: #ffffff;
+  --color-border: #e8e8e3;
+  --ui-font: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+}
+
+/* 隐藏不必要功能：主题切换、帮助、导出图片（保留我们自己的导出按钮）、协作 */
+.excalidraw .theme-toggle,
+.excalidraw .help-icon,
+.excalidraw .dropdown-menu-item:has([data-testid="export-image"]),
+.excalidraw .dropdown-menu-item:has([data-testid="save-to-current-file"]),
+.excalidraw .dropdown-menu-item:has([data-testid="collaboration"]) {
+  display: none !important;
+}
+
+/* 画布内工具栏圆角统一 */
+.excalidraw .ToolIcon,
+.excalidraw .Island {
+  border-radius: 8px;
+}
+
+/* 底部状态栏简化 */
+.excalidraw .Footer {
+  font-size: 11px;
+  color: var(--color-gray-50);
+}

@@ -17,11 +17,13 @@ export default function AgentPanel({
   engine,
   busy,
   onApply,
+  onClose,
 }: {
   graph: ViewpointGraph | null;
   engine: { id: string; baseURL?: string; apiKey?: string; model?: string };
   busy: boolean; // 外层正在生成图时禁用
   onApply: (g: ViewpointGraph) => void;
+  onClose: () => void;
 }) {
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState("");
@@ -35,11 +37,21 @@ export default function AgentPanel({
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, thinking]);
 
-  const send = async () => {
-    const text = input.trim();
+  const send = async (preset?: string) => {
+    const text = (preset ?? input).trim();
     const g = graphRef.current;
-    if (!text || !g || thinking || busy) return;
-    setInput("");
+    if (!text || thinking || busy) return;
+    // 没有图时不报服务器错误，直接在对话里友好提示
+    if (!g) {
+      setMessages((m) => [
+        ...m,
+        { role: "user", content: text, ts: Date.now() },
+        { role: "assistant", content: "画板上还没有图。先在上方输入问题点「一键看山」，图出来后我就能帮你改了。", ts: Date.now() },
+      ]);
+      if (!preset) setInput("");
+      return;
+    }
+    if (!preset) setInput("");
     setMessages((m) => [...m, { role: "user", content: text, ts: Date.now() }]);
     historyRef.current.push({ role: "user", content: text });
     setThinking(true);
@@ -74,17 +86,26 @@ export default function AgentPanel({
       <div className="flex items-center gap-2 border-b border-[#e8e8e3] px-4 py-3">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/liukanshan/idle.gif" alt="刘看山" className="h-7 w-7" />
-        <div>
+        <div className="flex-1">
           <h2 className="text-sm font-semibold text-[#1a1a1a]">看山助手</h2>
           <p className="text-[10px] text-gray-400">连续对话，实时改图</p>
         </div>
+        <button
+          onClick={onClose}
+          className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+          title="收起面板"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M9 18l6-6-6-6" />
+          </svg>
+        </button>
       </div>
 
       <div className="thin-scroll flex-1 overflow-y-auto p-3">
         {messages.length === 0 && (
           <div className="flex flex-col items-center gap-3 pt-10 text-center">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/liukanshan/hello.gif" alt="刘看山打招呼" className="h-24 w-24" />
+            <img src="/liukanshan/sway.gif" alt="刘看山" className="h-24 w-24" />
             <p className="px-4 text-xs leading-5 text-gray-500">
               图生成后，可以直接让我改：
               <br />
@@ -150,14 +171,14 @@ export default function AgentPanel({
                 send();
               }
             }}
-            placeholder={graph ? "说说想怎么改这张图…" : "等图生成后就能对话了"}
-            disabled={!graph || thinking || busy}
+            placeholder={graph ? "说说想怎么改这张图…" : "等图生成后就能对话了（也可以先点上方建议试试）"}
+            disabled={thinking || busy}
             rows={2}
             className="thin-scroll flex-1 resize-none rounded-xl border border-gray-200 bg-[#fafaf7] px-3 py-2 text-xs leading-5 outline-none transition focus:border-[#0066ff]/50 focus:bg-white disabled:opacity-50"
           />
           <button
-            onClick={send}
-            disabled={!graph || !input.trim() || thinking || busy}
+            onClick={() => send()}
+            disabled={!input.trim() || thinking || busy}
             className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#0066ff] text-white transition hover:bg-[#0052cc] disabled:opacity-40"
             title="发送"
           >
