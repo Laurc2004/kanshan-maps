@@ -7,3 +7,8 @@
 - 已读：SKILL.md（CLI 能力总览）、hackathon.md（赛程/OAuth/提交检查）
 - 创建 task_plan.md / findings.md / progress.md
 - 待办：读 4 份 API reference → git 基线 commit
+
+## Session 1 (续) — 2026-09-11
+- 读完 hackathon-oauth.md / user-api.md / http-api.md / hackathon-content-api.md，要点回填 findings.md
+- Phase 1 complete；git commit 计划中
+- 关键发现：zhihu_search Count 上限 10；直答模型 zhida-fast-1p5；OAuth 回调参数为 authorization_code；答主高亮只能按昵称匹配

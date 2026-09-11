@@ -33,11 +33,12 @@
 
 ## Phases
 
-### Phase 1: 侦察与地基 — status: in_progress
+### Phase 1: 侦察与地基 — status: complete
 - [x] 下载解压官方 skill 包到 docs/zhihu-skill/
 - [x] 读 SKILL.md + hackathon.md
-- [ ] 读 hackathon-oauth.md / user-api.md / http-api.md / hackathon-content-api.md，接口细节写入 findings.md
-- [ ] 初始化 planning 文件 + git 基线 commit
+- [x] 读 hackathon-oauth.md / user-api.md / http-api.md / hackathon-content-api.md，接口细节写入 findings.md
+- [x] 初始化 planning 文件 + git 基线 commit
+- [x] 开发方式确认：Loop Engineering（最小闭环→逐步补齐→每步验证前后端联通→报错即修）
 
 ### Phase 2: 骨架与部署 — status: pending
 - [ ] Next.js (App Router, TS) + Tailwind 脚手架
