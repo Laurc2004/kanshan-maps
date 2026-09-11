@@ -60,11 +60,14 @@
 - [x] E2E 验证：真实浏览器 生成（16 元素+10 素材卡）→ 对话"精简共识"（回复+回执+画板重渲染 17 元素）
 - [x] lint 0 错 / build 通过
 
-### Phase 4: 知乎账号打通 — status: pending
-- [ ] OAuth 登录流（app_id/app_key 分配后）
-- [ ] 服务端代理：关注流 / 关注列表（缓存 + 降级）
-- [ ] 关注答主高亮（昵称归一化匹配）
-- [ ] 预生成热门问题地图脚本（绕额度限制）
+### Phase 4: 知乎账号打通 — status: complete（除真实凭证联调）
+- [x] OAuth 登录流全链路：/api/auth/login（302+state 防 CSRF）→ /api/auth/callback（authorization_code 换 token，成功判断以含 access_token 为准）→ HMAC 签名会话 cookie（src/lib/session.ts，7 天 httpOnly）
+- [x] /api/auth/me（登录态查询）/ /api/auth/logout（清 cookie）
+- [x] /api/me/followees：关注列表分页拉取（50×4 页），30min 缓存，未登录 401
+- [x] 前端：顶栏登录按钮/已登录态（关注 N 人）/ OAuth 错误参数友好提示条；登录后自动拉关注列表
+- [x] 关注答主高亮：昵称归一化（去空格转小写）→ graphToScene 传 followedAuthors，拿到列表后自动重绘
+- [x] 验证：session 编解码单测（roundtrip/篡改/垃圾输入全 PASS）；未配置凭证时 login 503 友好文案、followees 401、callback 无 code 重定向；UI 回归（错误提示条+URL 清理+登录按钮）；全链路 E2E 无回归；lint 0 错 build 通过
+- [ ] 真实联调门：等黑客松活动页分配 ZHIHU_APP_ID/ZHIHU_APP_KEY + 部署拿固定域名后填 .env 实测（外部阻塞，非代码问题）
 
 ### Phase 5: 打磨与交付 — status: pending
 - [ ] Vercel 部署 + 固定域名

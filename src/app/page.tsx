@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import dynamic from "next/dynamic";
 import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
 import "@excalidraw/excalidraw/index.css";
@@ -31,10 +31,56 @@ export default function Home() {
   const [showSources, setShowSources] = useState(true);
   const [showEngineCfg, setShowEngineCfg] = useState(false);
   const [engine, setEngine] = useState<Engine>({ id: "builtin" });
+  const [me, setMe] = useState<{ loggedIn: boolean; name?: string }>({ loggedIn: false });
+  const [followeeCount, setFolloweeCount] = useState(0);
+  const [authNotice, setAuthNotice] = useState<string | null>(null);
 
   const apiRef = useRef<ExcalidrawImperativeAPI | null>(null);
   const pendingRef = useRef<unknown[] | null>(null);
   const [boardMounted, setBoardMounted] = useState(false);
+  const followeesRef = useRef<Set<string>>(new Set());
+  const graphRef = useRef<ViewpointGraph | null>(null);
+  const renderGraphRef = useRef<(g: ViewpointGraph, f?: Set<string>) => void>(() => {});
+
+  // 启动：读登录态 + 处理 OAuth 回调错误参数
+  useEffect(() => {
+    fetch("/api/auth/me")
+      .then((r) => r.json())
+      .then((d) => setMe(d))
+      .catch(() => {});
+    const sp = new URLSearchParams(window.location.search);
+    const authError = sp.get("auth_error");
+    if (authError) {
+      const map: Record<string, string> = {
+        missing_code: "知乎登录未完成（未拿到授权码）",
+        state_mismatch: "登录状态校验失败，请重试",
+        server_not_configured: "服务端未配置知乎应用凭证",
+        token_exchange_failed: "授权码换 Token 失败，请重试",
+        network: "网络异常，登录失败",
+      };
+      // 微任务里 setState，避免 effect 内同步 setState 触发级联渲染告警
+      queueMicrotask(() => setAuthNotice(map[authError] ?? "登录失败"));
+      window.history.replaceState({}, "", "/");
+      setTimeout(() => setAuthNotice(null), 6000);
+    }
+  }, []);
+
+  // 登录后拉关注列表（答主高亮的数据源）；拿到后若已有图则重绘高亮
+  useEffect(() => {
+    if (!me.loggedIn) return;
+    fetch("/api/me/followees")
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((d) => {
+        // 昵称归一化：去空格转小写，匹配搜索结果的 AuthorName
+        const names = new Set<string>(
+          (d.names ?? []).map((n: string) => n.replace(/\s+/g, "").toLowerCase())
+        );
+        followeesRef.current = names;
+        setFolloweeCount(names.size);
+        if (graphRef.current) renderGraphRef.current(graphRef.current, names);
+      })
+      .catch(() => {});
+  }, [me.loggedIn]);
 
   // 稳定引用：excalidrawAPI 回调不随 state 变化重建（避免重复挂载双实例）
   const onApiReady = useCallback((api: ExcalidrawImperativeAPI) => {
@@ -65,9 +111,9 @@ export default function Home() {
     }
   }, []);
 
-  const renderGraph = useCallback(async (g: ViewpointGraph) => {
+  const renderGraph = useCallback(async (g: ViewpointGraph, followed?: Set<string>) => {
     const { graphToScene } = await import("@/lib/excalidraw-layout");
-    const elements = graphToScene(g) as never[];
+    const elements = graphToScene(g, followed ?? followeesRef.current) as never[];
     if (apiRef.current) {
       apiRef.current.updateScene({ elements });
       setTimeout(
@@ -79,6 +125,10 @@ export default function Home() {
       setBoardMounted(true);
     }
   }, []);
+  // renderGraphRef 只在 effect/事件里被读；同步赋值放 effect 里避免渲染期写 ref
+  useEffect(() => {
+    renderGraphRef.current = renderGraph;
+  }, [renderGraph]);
 
   const generate = useCallback(async () => {
     if (!question.trim() || loading) return;
@@ -96,6 +146,7 @@ export default function Home() {
       if (!res.ok) throw new Error(data.error || "生成失败");
       setStatus("正在绘制知识地图…");
       setGraph(data.graph);
+      graphRef.current = data.graph;
       setItems(data.items ?? []);
       setShowSources(true);
       setBoardMounted(true);
@@ -114,6 +165,7 @@ export default function Home() {
   const applyAgentGraph = useCallback(
     (g: ViewpointGraph) => {
       setGraph(g);
+      graphRef.current = g;
       renderGraph(g);
     },
     [renderGraph]
@@ -182,8 +234,46 @@ export default function Home() {
               <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09a1.65 1.65 0 00-1-1.51 1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06A1.65 1.65 0 004.6 15a1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06A1.65 1.65 0 009 4.6a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06A1.65 1.65 0 0019.4 9c.14.31.22.65.22 1V10a2 2 0 01-2 2" />
             </svg>
           </button>
+          {me.loggedIn ? (
+            <div className="flex items-center gap-1.5 rounded-full border border-[#0066ff]/20 bg-[#f0f5ff] py-1 pl-1 pr-3">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/liukanshan/idle.gif" alt="" className="h-6 w-6" />
+              <span className="text-xs font-medium text-[#0066ff]">
+                {me.name ?? "已登录"}
+                {followeeCount > 0 && <span className="ml-1 text-[10px] font-normal text-gray-400">关注{followeeCount}人</span>}
+              </span>
+              <button
+                onClick={() =>
+                  fetch("/api/auth/logout", { method: "POST" }).then(() => {
+                    setMe({ loggedIn: false });
+                    followeesRef.current = new Set();
+                    setFolloweeCount(0);
+                  })
+                }
+                className="text-[10px] text-gray-400 hover:text-gray-600"
+                title="退出登录"
+              >
+                退出
+              </button>
+            </div>
+          ) : (
+            <a
+              href="/api/auth/login"
+              className="flex items-center gap-1.5 rounded-full border border-gray-200 px-3 py-1.5 text-xs text-gray-500 transition hover:border-[#0066ff]/50 hover:text-[#0066ff]"
+              title="知乎登录后，地图上会高亮你关注的答主"
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/liukanshan/ball.gif" alt="" className="h-5 w-5" />
+              知乎登录
+            </a>
+          )}
         </div>
       </header>
+
+      {/* OAuth 回调错误提示 */}
+      {authNotice && (
+        <div className="shrink-0 bg-amber-50 px-5 py-1.5 text-xs text-amber-700">{authNotice}</div>
+      )}
 
       {/* 引擎设置（可折叠） */}
       {showEngineCfg && (

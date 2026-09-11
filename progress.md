@@ -13,6 +13,16 @@
 - Phase 1 complete；git commit 计划中
 - 关键发现：zhihu_search Count 上限 10；直答模型 zhida-fast-1p5；OAuth 回调参数为 authorization_code；答主高亮只能按昵称匹配
 
+## Session 3 — 2026-09-11（Phase 4: 知乎账号打通）
+- AGENTS.md 重写再次被权限拦截（用户未响应 approval 弹窗）→ 放弃直接写，项目约定继续维护在 task_plan/findings/progress
+- 新增 src/lib/session.ts：HMAC-SHA256 签名 cookie 会话（WebCrypto，无状态，7 天过期）；单测 roundtrip/篡改/垃圾/空 全 PASS
+- 新增路由：/api/auth/login（302 authorize + state cookie）、/api/auth/callback（换 token + 写会话 + 5 种失败重定向）、/api/auth/me、/api/auth/logout、/api/me/followees（分页 50×4、30min 缓存、未登录 401）
+- 前端：顶栏登录按钮（ball.gif）↔ 已登录态（idle.gif + 关注人数 + 退出）；auth_error 参数 → 琥珀色提示条 + URL 清理
+- 关注高亮链路：登录 → 拉 followees → 昵称归一化 → followeesRef → graphToScene(g, followed) ★ 高亮重绘
+- 修复 React 19 lint 新规：渲染期写 ref（followeesRef.current = followees）→ 事件/effect 内赋值；effect 内同步 setState → queueMicrotask
+- 验证：lint 0 错；build 11 路由全过；OAuth 降级行为（503 友好文案/401/307 重定向）；UI 回归无 pageerror；E2E 生成+对话改图无回归
+- 遗留真实联调门：ZHIHU_APP_ID/APP_KEY 未分配（外部阻塞），.env.example 已加占位
+
 ## Session 2 — 2026-09-11（产品化重构）
 - 用户反馈：原始需求未跑通感 + 样式问题；新需求：Agent 连续对话改图 + 专业 UI + 刘看山素材
 - 现状盘点：/api/generate 真实数据链路其实是通的（curl 验证 "AI会取代程序员吗" 返回 2 共识+3 立场+真实链接）；样式问题确认（globals.css 暗色变量污染）
