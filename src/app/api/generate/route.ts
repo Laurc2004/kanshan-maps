@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
     }
 
     cache.set(key, { graph, ts: Date.now() });
-    return NextResponse.json({ graph, cached: false, sources: items.length });
+    return NextResponse.json({ graph, cached: false, sources: items.length, items });
   } catch (e) {
     console.error("[/api/generate]", e);
     return NextResponse.json({ error: e instanceof Error ? e.message : "生成失败，请稍后重试" }, { status: 500 });

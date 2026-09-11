@@ -71,7 +71,7 @@ function arrow(from: string, to: string, x1: number, y1: number, x2: number, y2:
 }
 
 export function graphToScene(g: ViewpointGraph, followedAuthors: Set<string> = new Set()): El[] {
-  let els: El[] = [];
+  const els: El[] = [];
   uid = 0;
 
   // 标题

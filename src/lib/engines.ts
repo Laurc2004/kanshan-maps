@@ -31,7 +31,7 @@ export async function chatComplete(cfg: { baseURL: string; apiKey: string; model
   const client = new OpenAI({ baseURL: cfg.baseURL, apiKey: cfg.apiKey, maxRetries: 1, timeout: 90_000 });
   const res = await client.chat.completions.create({
     model: cfg.model,
-    messages: messages as any,
+    messages: messages as OpenAI.Chat.Completions.ChatCompletionMessageParam[],
     stream: false,
   });
   const content = res.choices?.[0]?.message?.content;

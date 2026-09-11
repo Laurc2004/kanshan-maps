@@ -9,6 +9,8 @@ export type SearchResultItem = {
   Url: string;
   VoteUpCount: number;
   AuthorName: string;
+  AuthorAvatar?: string;
+  AuthorSignature?: string;
   AuthorityLevel?: string;
 };
 

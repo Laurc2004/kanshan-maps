@@ -59,3 +59,28 @@
 - ⚠️ 答主高亮匹配难题：搜索 Item 只有 AuthorName（昵称），followees 有 Fullname+UrlToken → 只能按昵称字符串匹配，需做归一化（去空格/大小写）
 - ⚠️ 直答额度是开发者级总量 100/天（非每用户）→ 生成结果必须缓存（问题→图 JSON），预生成热门问题，演示用预生成数据
 - Excalidraw 方案定稿：官方 npm @excalidraw/excalidraw 嵌入（excalidraw-cn 已 3 年未更新，仅借鉴其中文字体注册思路）
+
+## 产品化重构（Phase 3）设计决策 — 2026-09-11
+
+### 产品定位再思考
+- 一句话：「问题观点的可视化炼金工作台」—— 不是一次性的"生成图"工具，而是用户与 AI 一起打磨观点地图的工作台
+- 核心体验闭环：生成（搜索+提取）→ 对话修改（Agent）→ 手动精修（Excalidraw）→ 导出分享
+- AI Agent 的差异化：对"图"做操作而不是对"文本"做改写，每次操作可解释（"我把 X 立场标为重点"）
+
+### UI 布局（桌面优先）
+- 三栏：左=知乎上下文（原始回答列表、答主、可点链接）/ 中=Excalidraw 画板（主舞台）/ 右=AI Agent 对话
+- 移动端降级：画板全屏，左右面板为抽屉
+- 设计基调：知乎蓝 #0066FF 为强调色，纸感米白背景 #FAFAF7，手绘字体（Excalidraw fontFamily 3 = 手写体）
+- 刘看山素材用法：空状态=hello.gif、生成中=working.gif、Agent 头像=idle.gif、无结果=sleepy.gif
+
+### Agent 改图语义层（graph-patch.ts）
+- Agent 不直接生成 Excalidraw 元素，而是输出操作序列（JSON ops），前端应用后重新布局
+- 操作类型：add_viewpoint / update_viewpoint / remove_viewpoint / emphasize_viewpoint / set_consensus / add_note / relayout
+- 好处：可解释、可撤销（ops 快照）、防幻觉（操作落在真实 graph 节点上）
+- graph 在请求 body 中回传，服务端无状态（避免会话存储）
+
+### 已验证事实
+- /api/generate 全链路真实数据验证通过（2026-09-11）："AI会取代程序员吗" 返回 2 共识 + 3+ 立场，含真实作者名与链接
+- 页面 dev 渲染 OK（curl 200）
+- 样式问题：globals.css 有暗色 media query 会把背景刷成 #0a0a0a 与组件硬编码亮色冲突 → 需移除
+

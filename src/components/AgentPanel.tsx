@@ -1,0 +1,172 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import type { ViewpointGraph } from "@/lib/viewpoints";
+
+export type ChatMsg = {
+  role: "user" | "assistant";
+  content: string;
+  detail?: string[]; // 应用成功的操作描述
+  failed?: string[];
+  ts: number;
+};
+
+// 右栏：AI Agent 连续对话面板
+export default function AgentPanel({
+  graph,
+  engine,
+  busy,
+  onApply,
+}: {
+  graph: ViewpointGraph | null;
+  engine: { id: string; baseURL?: string; apiKey?: string; model?: string };
+  busy: boolean; // 外层正在生成图时禁用
+  onApply: (g: ViewpointGraph) => void;
+}) {
+  const [messages, setMessages] = useState<ChatMsg[]>([]);
+  const [input, setInput] = useState("");
+  const [thinking, setThinking] = useState(false);
+  const historyRef = useRef<{ role: string; content: string }[]>([]);
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const graphRef = useRef<ViewpointGraph | null>(null);
+  graphRef.current = graph;
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, thinking]);
+
+  const send = async () => {
+    const text = input.trim();
+    const g = graphRef.current;
+    if (!text || !g || thinking || busy) return;
+    setInput("");
+    setMessages((m) => [...m, { role: "user", content: text, ts: Date.now() }]);
+    historyRef.current.push({ role: "user", content: text });
+    setThinking(true);
+    try {
+      const res = await fetch("/api/agent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: text, graph: g, history: historyRef.current.slice(-8), engine }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "助手开小差了");
+      historyRef.current.push({ role: "assistant", content: data.reply });
+      setMessages((m) => [
+        ...m,
+        { role: "assistant", content: data.reply, detail: data.applied, failed: data.failed, ts: Date.now() },
+      ]);
+      if (data.changed) onApply(data.graph);
+    } catch (e) {
+      setMessages((m) => [
+        ...m,
+        { role: "assistant", content: e instanceof Error ? e.message : "网络异常，请重试", ts: Date.now() },
+      ]);
+    } finally {
+      setThinking(false);
+    }
+  };
+
+  const suggestions = ["把第一个立场标为重点", "共识再精简一点", "标题改成更抓眼球的", "删掉最弱的那个立场"];
+
+  return (
+    <aside className="flex h-full w-80 flex-col border-l border-[#e8e8e3] bg-white">
+      <div className="flex items-center gap-2 border-b border-[#e8e8e3] px-4 py-3">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/liukanshan/idle.gif" alt="刘看山" className="h-7 w-7" />
+        <div>
+          <h2 className="text-sm font-semibold text-[#1a1a1a]">看山助手</h2>
+          <p className="text-[10px] text-gray-400">连续对话，实时改图</p>
+        </div>
+      </div>
+
+      <div className="thin-scroll flex-1 overflow-y-auto p-3">
+        {messages.length === 0 && (
+          <div className="flex flex-col items-center gap-3 pt-10 text-center">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/liukanshan/hello.gif" alt="刘看山打招呼" className="h-24 w-24" />
+            <p className="px-4 text-xs leading-5 text-gray-500">
+              图生成后，可以直接让我改：
+              <br />
+              调立场、改标题、精简共识、突出重点…
+            </p>
+            <div className="flex flex-wrap justify-center gap-1.5 px-3">
+              {suggestions.map((s) => (
+                <button
+                  key={s}
+                  onClick={() => setInput(s)}
+                  className="rounded-full border border-gray-200 px-2.5 py-1 text-[11px] text-gray-500 transition hover:border-[#0066ff]/50 hover:text-[#0066ff]"
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        {messages.map((m, i) => (
+          <div key={i} className={`mb-3 flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
+            <div
+              className={`max-w-[85%] rounded-2xl px-3 py-2 text-xs leading-5 ${
+                m.role === "user"
+                  ? "rounded-br-sm bg-[#0066ff] text-white"
+                  : "rounded-bl-sm bg-[#f4f4f1] text-[#1a1a1a]"
+              }`}
+            >
+              <p>{m.content}</p>
+              {m.detail && m.detail.length > 0 && (
+                <ul className="mt-1.5 space-y-0.5 border-t border-black/5 pt-1.5 text-[10px] text-gray-500">
+                  {m.detail.map((d, j) => (
+                    <li key={j}>✓ {d}</li>
+                  ))}
+                  {m.failed?.map((d, j) => (
+                    <li key={`f${j}`} className="text-amber-600">✗ {d}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        ))}
+        {thinking && (
+          <div className="mb-3 flex items-center gap-2">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/liukanshan/working.gif" alt="思考中" className="h-8 w-8" />
+            <span className="text-xs text-gray-400">看山思考中…</span>
+          </div>
+        )}
+        <div ref={bottomRef} />
+      </div>
+
+      <div className="border-t border-[#e8e8e3] p-3">
+        {!graph && (
+          <p className="mb-2 text-center text-[10px] text-gray-400">先在上方输入问题，生成第一张地图</p>
+        )}
+        <div className="flex items-end gap-2">
+          <textarea
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+                e.preventDefault();
+                send();
+              }
+            }}
+            placeholder={graph ? "说说想怎么改这张图…" : "等图生成后就能对话了"}
+            disabled={!graph || thinking || busy}
+            rows={2}
+            className="thin-scroll flex-1 resize-none rounded-xl border border-gray-200 bg-[#fafaf7] px-3 py-2 text-xs leading-5 outline-none transition focus:border-[#0066ff]/50 focus:bg-white disabled:opacity-50"
+          />
+          <button
+            onClick={send}
+            disabled={!graph || !input.trim() || thinking || busy}
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#0066ff] text-white transition hover:bg-[#0052cc] disabled:opacity-40"
+            title="发送"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+              <path d="M12 19V5M5 12l7-7 7 7" />
+            </svg>
+          </button>
+        </div>
+      </div>
+    </aside>
+  );
+}
