@@ -69,8 +69,10 @@
 - [x] 验证：session 编解码单测（roundtrip/篡改/垃圾输入全 PASS）；未配置凭证时 login 503 友好文案、followees 401、callback 无 code 重定向；UI 回归（错误提示条+URL 清理+登录按钮）；全链路 E2E 无回归；lint 0 错 build 通过
 - [ ] 真实联调门：等黑客松活动页分配 ZHIHU_APP_ID/ZHIHU_APP_KEY + 部署拿固定域名后填 .env 实测（外部阻塞，非代码问题）
 
-### Phase 5: 打磨与交付 — status: pending
-- [ ] Vercel 部署 + 固定域名
+### Phase 5: 打磨与交付 — status: in_progress
+- [x] Vercel 部署 + 固定域名：https://kanshan-maps.vercel.app（生产验证：生成 API 真实数据 4 立场 10 素材、UI 回归无 pageerror、登录态 API 正常）
+- [x] 12 个环境变量上 Vercel（ZHIHU_ACCESS_SECRET + OPENAI_COMPAT_* × prod/preview/dev，敏感项 Encrypted）
+- [ ] 拿到 ZHIHU_APP_ID/APP_KEY 后：填 Vercel 环境变量 + OAUTH_REDIRECT_URI=https://kanshan-maps.vercel.app/api/auth/callback（活动页登记须与此完全一致）→ 真实 OAuth 联调
 - [ ] 演示视频 + 计划书（PDF）
 - [ ] 提交前检查清单过一遍（hackathon.md「提交前检查」7 条）
 

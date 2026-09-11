@@ -13,6 +13,12 @@
 - Phase 1 complete；git commit 计划中
 - 关键发现：zhihu_search Count 上限 10；直答模型 zhida-fast-1p5；OAuth 回调参数为 authorization_code；答主高亮只能按昵称匹配
 
+## Session 3 (续) — 2026-09-11（Phase 5: Vercel 部署）
+- vercel link 创建项目 liurc2004/kanshan-maps；12 个环境变量（sensitive 不支持 development 环境，dev 用普通方式添加）
+- vercel deploy --prod → 固定域名 https://kanshan-maps.vercel.app 上线
+- 生产验证：/api/generate 真实数据（"考研还是就业" 4 立场 10 素材）；/api/auth/me 正常；OAuth 未配置时友好 503；Playwright UI 回归全过（三栏/图片/背景色/登录按钮，无 pageerror）
+- 待办：ZHIHU_APP_ID/APP_KEY 分配后填 Vercel 环境变量 + OAUTH_REDIRECT_URI（须与活动页登记一致）→ 真实 OAuth 联调
+
 ## Session 3 — 2026-09-11（Phase 4: 知乎账号打通）
 - AGENTS.md 重写再次被权限拦截（用户未响应 approval 弹窗）→ 放弃直接写，项目约定继续维护在 task_plan/findings/progress
 - 新增 src/lib/session.ts：HMAC-SHA256 签名 cookie 会话（WebCrypto，无状态，7 天过期）；单测 roundtrip/篡改/垃圾/空 全 PASS
