@@ -21,7 +21,7 @@ export function builtinEngines() {
     builtin: {
       baseURL: process.env.OPENAI_COMPAT_BASEURL || "https://api.openai-next.com/v1",
       apiKey: process.env.OPENAI_COMPAT_API_KEY || "",
-      model: process.env.OPENAI_COMPAT_MODEL || "deepseek-v4-pro",
+      model: process.env.OPENAI_COMPAT_MODEL || "deepseek-v4-flash",
     },
     // zhida 不走 OpenAI SDK，由 zhihu.ts 的 zhida() 处理
   };

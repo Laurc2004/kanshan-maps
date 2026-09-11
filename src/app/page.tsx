@@ -226,123 +226,127 @@ export default function Home() {
 
   return (
     <main className="flex h-screen flex-col bg-[#fafaf7]">
-      {/* 顶栏 */}
-      <header className="flex h-14 shrink-0 items-center gap-3 border-b border-[#e8e8e3] bg-white px-4">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/liukanshan/sway.gif" alt="刘看山" className="h-9 w-9" />
-        <div className="leading-tight">
-          <h1 className="text-[15px] font-bold text-[#1a1a1a]">一图看山</h1>
-          <p className="hidden text-[11px] text-gray-400 sm:block">把知乎的百家之言，炼成一张看得懂的地图</p>
-        </div>
-        <div className="ml-auto flex items-center gap-2">
-          {/* 模式切换 */}
-          <div className="flex rounded-full border border-gray-200 bg-[#fafaf7] p-0.5 text-xs">
-            {(
-              [
-                { id: "viewpoint", label: "观点对照" },
-                { id: "roadmap", label: "学习路线" },
-              ] as const
-            ).map((m) => (
-              <button
-                key={m.id}
-                onClick={() => setMode(m.id)}
-                className={`rounded-full px-3 py-1 transition ${
-                  mode === m.id ? "bg-[#0066ff] text-white" : "text-gray-500 hover:text-[#0066ff]"
-                }`}
+      {/* 顶栏：两行布局，搜索框独占一行不被挤压 */}
+      <header className="shrink-0 border-b border-[#e8e8e3] bg-white">
+        <div className="flex h-12 items-center gap-3 px-4">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/liukanshan/sway.gif" alt="刘看山" className="h-8 w-8" />
+          <div className="leading-tight">
+            <h1 className="text-[15px] font-bold text-[#1a1a1a]">一图看山</h1>
+          </div>
+          <div className="ml-auto flex items-center gap-2">
+            {/* 模式切换 */}
+            <div className="flex rounded-full border border-gray-200 bg-[#fafaf7] p-0.5 text-xs">
+              {(
+                [
+                  { id: "viewpoint", label: "观点对照" },
+                  { id: "roadmap", label: "学习路线" },
+                ] as const
+              ).map((m) => (
+                <button
+                  key={m.id}
+                  onClick={() => setMode(m.id)}
+                  className={`rounded-full px-3 py-1 transition ${
+                    mode === m.id ? "bg-[#0066ff] text-white" : "text-gray-500 hover:text-[#0066ff]"
+                  }`}
+                >
+                  {m.label}
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={() => setShowSources((v) => !v)}
+              title={showSources ? "隐藏素材栏" : "显示素材栏"}
+              className={`rounded-full border p-2 transition ${
+                showSources
+                  ? "border-[#0066ff]/30 bg-[#f0f5ff] text-[#0066ff]"
+                  : "border-gray-200 text-gray-400 hover:border-[#0066ff]/30 hover:text-[#0066ff]"
+              }`}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M4 6h16M4 12h10M4 18h7" />
+              </svg>
+            </button>
+            <button
+              onClick={() => setShowEngineCfg((v) => !v)}
+              title="转换引擎设置"
+              className={`rounded-full border p-2 transition ${
+                showEngineCfg
+                  ? "border-[#0066ff]/30 bg-[#f0f5ff] text-[#0066ff]"
+                  : "border-gray-200 text-gray-400 hover:border-[#0066ff]/30 hover:text-[#0066ff]"
+              }`}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="12" cy="12" r="3" />
+                <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09a1.65 1.65 0 00-1-1.51 1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06A1.65 1.65 0 004.6 15a1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06A1.65 1.65 0 009 4.6a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06A1.65 1.65 0 0019.4 9c.14.31.22.65.22 1V10a2 2 0 01-2 2" />
+              </svg>
+            </button>
+            {me.loggedIn ? (
+              <div className="flex items-center gap-1.5 rounded-full border border-[#0066ff]/20 bg-[#f0f5ff] py-1 pl-1 pr-3">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/liukanshan/idle.gif" alt="" className="h-6 w-6" />
+                <span className="text-xs font-medium text-[#0066ff]">
+                  {me.name ?? "已登录"}
+                  {followeeCount > 0 && <span className="ml-1 text-[10px] font-normal text-gray-400">关注{followeeCount}人</span>}
+                </span>
+                <button
+                  onClick={() =>
+                    fetch("/api/auth/logout", { method: "POST" }).then(() => {
+                      setMe({ loggedIn: false });
+                      followeesRef.current = new Set();
+                      setFolloweeCount(0);
+                    })
+                  }
+                  className="text-[10px] text-gray-400 hover:text-gray-600"
+                  title="退出登录"
+                >
+                  退出
+                </button>
+              </div>
+            ) : (
+              <a
+                href="/api/auth/login"
+                className="flex items-center gap-1.5 rounded-full border border-gray-200 px-3 py-1.5 text-xs text-gray-500 transition hover:border-[#0066ff]/50 hover:text-[#0066ff]"
+                title="知乎登录后，地图上会高亮你关注的答主"
               >
-                {m.label}
-              </button>
-            ))}
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4M10 17l5-5-5-5M15 12H3" />
+                </svg>
+                知乎登录
+              </a>
+            )}
           </div>
-          <div className="relative">
-            <input
-              value={question}
-              onChange={(e) => setQuestion(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && generate()}
-              placeholder={
-                mode === "viewpoint" ? "输入有争议的问题，如：年轻人该不该买房" : "输入领域关键词，如：前端入门"
-              }
-              className="w-52 rounded-full border border-gray-200 bg-[#fafaf7] py-2 pl-4 pr-3 text-sm outline-none transition focus:border-[#0066ff]/60 focus:bg-white focus:shadow-sm sm:w-72"
-              disabled={loading}
-            />
-          </div>
+        </div>
+        {/* 第二行：搜索 + 生成按钮，搜索框占满剩余宽度 */}
+        <div className="flex items-center gap-2 border-t border-[#f0f0ec] px-4 py-2">
+          <input
+            value={question}
+            onChange={(e) => setQuestion(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && generate()}
+            placeholder={
+              mode === "viewpoint" ? "输入有争议的问题，如：年轻人该不该买房" : "输入领域关键词，如：前端入门"
+            }
+            className="min-w-0 flex-1 rounded-full border border-gray-200 bg-[#fafaf7] py-2 pl-4 pr-3 text-sm outline-none transition focus:border-[#0066ff]/60 focus:bg-white focus:shadow-sm"
+            disabled={loading}
+          />
           <button
             onClick={generate}
             data-role="generate"
             disabled={loading || !question.trim()}
-            className="flex items-center gap-1.5 rounded-full bg-[#0066ff] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#0052cc] disabled:opacity-50"
+            className="flex shrink-0 items-center gap-1.5 rounded-full bg-[#0066ff] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#0052cc] disabled:opacity-50"
           >
             {loading ? (
               <>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src="/liukanshan/working.gif" alt="" className="h-5 w-5" />
+                <svg className="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <circle cx="12" cy="12" r="10" opacity="0.25" />
+                  <path d="M12 2a10 10 0 0110 10" />
+                </svg>
                 炼图中…
               </>
             ) : (
               "一键看山"
             )}
           </button>
-          <button
-            onClick={() => setShowSources((v) => !v)}
-            title={showSources ? "隐藏素材栏" : "显示素材栏"}
-            className={`rounded-full border p-2 transition ${
-              showSources
-                ? "border-[#0066ff]/30 bg-[#f0f5ff] text-[#0066ff]"
-                : "border-gray-200 text-gray-400 hover:border-[#0066ff]/30 hover:text-[#0066ff]"
-            }`}
-          >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M4 6h16M4 12h10M4 18h7" />
-            </svg>
-          </button>
-          <button
-            onClick={() => setShowEngineCfg((v) => !v)}
-            title="转换引擎设置"
-            className={`rounded-full border p-2 transition ${
-              showEngineCfg
-                ? "border-[#0066ff]/30 bg-[#f0f5ff] text-[#0066ff]"
-                : "border-gray-200 text-gray-400 hover:border-[#0066ff]/30 hover:text-[#0066ff]"
-            }`}
-          >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="12" cy="12" r="3" />
-              <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09a1.65 1.65 0 00-1-1.51 1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06A1.65 1.65 0 004.6 15a1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06A1.65 1.65 0 009 4.6a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06A1.65 1.65 0 0019.4 9c.14.31.22.65.22 1V10a2 2 0 01-2 2" />
-            </svg>
-          </button>
-          {me.loggedIn ? (
-            <div className="flex items-center gap-1.5 rounded-full border border-[#0066ff]/20 bg-[#f0f5ff] py-1 pl-1 pr-3">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/liukanshan/idle.gif" alt="" className="h-6 w-6" />
-              <span className="text-xs font-medium text-[#0066ff]">
-                {me.name ?? "已登录"}
-                {followeeCount > 0 && <span className="ml-1 text-[10px] font-normal text-gray-400">关注{followeeCount}人</span>}
-              </span>
-              <button
-                onClick={() =>
-                  fetch("/api/auth/logout", { method: "POST" }).then(() => {
-                    setMe({ loggedIn: false });
-                    followeesRef.current = new Set();
-                    setFolloweeCount(0);
-                  })
-                }
-                className="text-[10px] text-gray-400 hover:text-gray-600"
-                title="退出登录"
-              >
-                退出
-              </button>
-            </div>
-          ) : (
-            <a
-              href="/api/auth/login"
-              className="flex items-center gap-1.5 rounded-full border border-gray-200 px-3 py-1.5 text-xs text-gray-500 transition hover:border-[#0066ff]/50 hover:text-[#0066ff]"
-              title="知乎登录后，地图上会高亮你关注的答主"
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4M10 17l5-5-5-5M15 12H3" />
-              </svg>
-              知乎登录
-            </a>
-          )}
         </div>
       </header>
 
@@ -357,7 +361,7 @@ export default function Home() {
           <div className="mb-2 text-xs font-medium text-gray-500">转换引擎（把知乎内容炼成画板的大模型）</div>
           <div className="mb-2 flex flex-wrap gap-2">
             {[
-              { id: "builtin", label: "内置 deepseek-v4-pro（推荐）" },
+              { id: "builtin", label: "内置 deepseek-v4-flash（推荐）" },
               { id: "custom", label: "自定义 OpenAI 兼容" },
             ].map((e) => (
               <button
@@ -405,10 +409,14 @@ export default function Home() {
       {/* 状态条 */}
       {(status || error) && (
         <div
-          className={`shrink-0 px-5 py-1.5 text-xs ${
+          className={`flex shrink-0 items-center gap-2 px-5 py-1.5 text-xs ${
             error ? "bg-red-50 text-red-600" : "bg-[#f0f5ff] text-[#0066ff]"
           }`}
         >
+          {!error && (
+            /* eslint-disable-next-line @next/next/no-img-element */
+            <img src="/liukanshan/working.gif" alt="" className="h-4 w-4" />
+          )}
           {error ?? status}
         </div>
       )}
@@ -465,9 +473,16 @@ export default function Home() {
               )}
             </>
           ) : (
-            <div className="flex h-full flex-col items-center justify-center gap-5 text-center">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/liukanshan/sanview-wide.jpg" alt="刘看山" className="h-44 w-80 rounded-2xl border border-[#eee] object-cover shadow-sm" />
+            <div className="flex h-full flex-col items-center justify-center gap-6 text-center">
+              {/* 用三帧动图拼一个"呼吸感"场景，避免单图疲劳 */}
+              <div className="flex items-end gap-4">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/liukanshan/sway.gif" alt="" className="h-28 w-28 rounded-2xl opacity-90" />
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/liukanshan/hello.gif" alt="" className="h-36 w-36 rounded-2xl shadow-sm" />
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/liukanshan/ball.gif" alt="" className="h-28 w-28 rounded-2xl opacity-90" />
+              </div>
               <div>
                 <h2 className="mb-2 text-2xl font-bold text-[#1a1a1a]">
                   看山是山，看山不是山，看山还是山
