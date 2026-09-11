@@ -7,7 +7,7 @@ import "@excalidraw/excalidraw/index.css";
 import type { ViewpointGraph } from "@/lib/viewpoints";
 import type { SearchResultItem } from "@/lib/zhihu";
 import AgentPanel from "@/components/AgentPanel";
-import SourcesPanel from "@/components/SourcesPanel";
+import SourcesPanel, { type HotItem } from "@/components/SourcesPanel";
 
 const Excalidraw = dynamic(() => import("@excalidraw/excalidraw").then((m) => m.Excalidraw), {
   ssr: false,
@@ -20,17 +20,21 @@ const Excalidraw = dynamic(() => import("@excalidraw/excalidraw").then((m) => m.
 });
 
 type Engine = { id: string; baseURL?: string; apiKey?: string; model?: string };
+type Mode = "viewpoint" | "roadmap";
 
 export default function Home() {
   const [question, setQuestion] = useState("");
+  const [mode, setMode] = useState<Mode>("viewpoint");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [graph, setGraph] = useState<ViewpointGraph | null>(null);
+  const [graphMode, setGraphMode] = useState<Mode>("viewpoint"); // 当前画板上的图类型
   const [items, setItems] = useState<SearchResultItem[]>([]);
   const [showSources, setShowSources] = useState(true);
   const [showEngineCfg, setShowEngineCfg] = useState(false);
   const [engine, setEngine] = useState<Engine>({ id: "builtin" });
+  const [hotItems, setHotItems] = useState<HotItem[]>([]);
   const [me, setMe] = useState<{ loggedIn: boolean; name?: string }>({ loggedIn: false });
   const [followeeCount, setFolloweeCount] = useState(0);
   const [authNotice, setAuthNotice] = useState<string | null>(null);
@@ -40,13 +44,17 @@ export default function Home() {
   const [boardMounted, setBoardMounted] = useState(false);
   const followeesRef = useRef<Set<string>>(new Set());
   const graphRef = useRef<ViewpointGraph | null>(null);
-  const renderGraphRef = useRef<(g: ViewpointGraph, f?: Set<string>) => void>(() => {});
+  const renderGraphRef = useRef<(g: ViewpointGraph, f?: Set<string>, m?: Mode) => void>(() => {});
 
-  // 启动：读登录态 + 处理 OAuth 回调错误参数
+  // 启动：读登录态 + 处理 OAuth 回调错误参数 + 拉热榜
   useEffect(() => {
     fetch("/api/auth/me")
       .then((r) => r.json())
       .then((d) => setMe(d))
+      .catch(() => {});
+    fetch("/api/hot")
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((d) => setHotItems(d.items ?? []))
       .catch(() => {});
     const sp = new URLSearchParams(window.location.search);
     const authError = sp.get("auth_error");
@@ -111,9 +119,11 @@ export default function Home() {
     }
   }, []);
 
-  const renderGraph = useCallback(async (g: ViewpointGraph, followed?: Set<string>) => {
-    const { graphToScene } = await import("@/lib/excalidraw-layout");
-    const elements = graphToScene(g, followed ?? followeesRef.current) as never[];
+  const renderGraph = useCallback(async (g: ViewpointGraph, followed?: Set<string>, m: Mode = "viewpoint") => {
+    const layout = await import("@/lib/excalidraw-layout");
+    const elements = (
+      m === "roadmap" ? layout.roadmapToScene(g as never) : layout.graphToScene(g, followed ?? followeesRef.current)
+    ) as never[];
     if (apiRef.current) {
       apiRef.current.updateScene({ elements });
       setTimeout(
@@ -134,32 +144,75 @@ export default function Home() {
     if (!question.trim() || loading) return;
     setLoading(true);
     setError(null);
-    setStatus("正在搜索知乎相关回答…");
+    setStatus("正在连接看山工作台…");
     try {
-      setStatus("正在分析各方观点立场…");
-      const res = await fetch("/api/generate", {
+      // SSE 流式：素材先到（SourcesPanel 立刻有内容），图后到（画板落笔）
+      const res = await fetch("/api/generate/stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question, engine }),
+        body: JSON.stringify({ question, engine, mode }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "生成失败");
-      setStatus("正在绘制知识地图…");
-      setGraph(data.graph);
-      graphRef.current = data.graph;
-      setItems(data.items ?? []);
-      setShowSources(true);
-      setBoardMounted(true);
-      await renderGraph(data.graph);
-      setStatus(data.cached ? "已生成（缓存）" : `已生成 · 基于 ${data.sources} 条知乎内容`);
-      setTimeout(() => setStatus(null), 4000);
+      if (!res.ok || !res.body) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "生成失败");
+      }
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = "";
+      let done = false;
+      while (!done) {
+        const { value, done: readerDone } = await reader.read();
+        done = readerDone;
+        buf += decoder.decode(value ?? new Uint8Array(), { stream: !done });
+        // SSE 事件以双换行分隔
+        const events = buf.split("\n\n");
+        buf = events.pop() ?? "";
+        for (const block of events) {
+          const evMatch = block.match(/^event: (\w+)/m);
+          const dataMatch = block.match(/^data: ([\s\S]*)$/m);
+          if (!evMatch || !dataMatch) continue;
+          const event = evMatch[1];
+          const data = JSON.parse(dataMatch[1]);
+          if (event === "status") {
+            setStatus(data.text);
+          } else if (event === "sources") {
+            // 第一步：素材立刻上栏
+            setItems(data.items ?? []);
+            setShowSources(true);
+          } else if (event === "graph") {
+            // 第二步：图落画板
+            setGraph(data.graph);
+            graphRef.current = data.graph;
+            setGraphMode(data.mode === "roadmap" ? "roadmap" : "viewpoint");
+            setBoardMounted(true);
+            await renderGraph(data.graph, undefined, data.mode);
+            setStatus(data.cached ? "已生成（缓存）" : `已生成 · 基于 ${data.sources} 条知乎内容`);
+            setTimeout(() => setStatus(null), 4000);
+          } else if (event === "error") {
+            throw new Error(data.error || "生成失败");
+          }
+        }
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "生成失败，请稍后重试");
       setStatus(null);
     } finally {
       setLoading(false);
     }
-  }, [question, loading, engine, renderGraph]);
+  }, [question, loading, engine, mode, renderGraph]);
+
+  // 热榜点击：填充问题并直接生成
+  const pickHot = useCallback(
+    (title: string) => {
+      setQuestion(title);
+      // 等 state 生效后触发
+      setTimeout(() => {
+        const btn = document.querySelector<HTMLButtonElement>('header button[data-role="generate"]');
+        btn?.click();
+      }, 0);
+    },
+    []
+  );
 
   // Agent 对话修改后的 graph 回灌画板
   const applyAgentGraph = useCallback(
@@ -182,18 +235,40 @@ export default function Home() {
           <p className="hidden text-[11px] text-gray-400 sm:block">把知乎的百家之言，炼成一张看得懂的地图</p>
         </div>
         <div className="ml-auto flex items-center gap-2">
+          {/* 模式切换 */}
+          <div className="flex rounded-full border border-gray-200 bg-[#fafaf7] p-0.5 text-xs">
+            {(
+              [
+                { id: "viewpoint", label: "观点对照" },
+                { id: "roadmap", label: "学习路线" },
+              ] as const
+            ).map((m) => (
+              <button
+                key={m.id}
+                onClick={() => setMode(m.id)}
+                className={`rounded-full px-3 py-1 transition ${
+                  mode === m.id ? "bg-[#0066ff] text-white" : "text-gray-500 hover:text-[#0066ff]"
+                }`}
+              >
+                {m.label}
+              </button>
+            ))}
+          </div>
           <div className="relative">
             <input
               value={question}
               onChange={(e) => setQuestion(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && generate()}
-              placeholder="输入一个有争议的问题，如：年轻人该不该买房"
-              className="w-64 rounded-full border border-gray-200 bg-[#fafaf7] py-2 pl-4 pr-3 text-sm outline-none transition focus:border-[#0066ff]/60 focus:bg-white focus:shadow-sm sm:w-80"
+              placeholder={
+                mode === "viewpoint" ? "输入有争议的问题，如：年轻人该不该买房" : "输入领域关键词，如：前端入门"
+              }
+              className="w-52 rounded-full border border-gray-200 bg-[#fafaf7] py-2 pl-4 pr-3 text-sm outline-none transition focus:border-[#0066ff]/60 focus:bg-white focus:shadow-sm sm:w-72"
               disabled={loading}
             />
           </div>
           <button
             onClick={generate}
+            data-role="generate"
             disabled={loading || !question.trim()}
             className="flex items-center gap-1.5 rounded-full bg-[#0066ff] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#0052cc] disabled:opacity-50"
           >
@@ -262,8 +337,9 @@ export default function Home() {
               className="flex items-center gap-1.5 rounded-full border border-gray-200 px-3 py-1.5 text-xs text-gray-500 transition hover:border-[#0066ff]/50 hover:text-[#0066ff]"
               title="知乎登录后，地图上会高亮你关注的答主"
             >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/liukanshan/ball.gif" alt="" className="h-5 w-5" />
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4M10 17l5-5-5-5M15 12H3" />
+              </svg>
               知乎登录
             </a>
           )}
@@ -281,8 +357,7 @@ export default function Home() {
           <div className="mb-2 text-xs font-medium text-gray-500">转换引擎（把知乎内容炼成画板的大模型）</div>
           <div className="mb-2 flex flex-wrap gap-2">
             {[
-              { id: "builtin", label: "内置引擎（推荐）" },
-              { id: "zhida", label: "知乎直答（官方）" },
+              { id: "builtin", label: "内置 deepseek-v4-pro（推荐）" },
               { id: "custom", label: "自定义 OpenAI 兼容" },
             ].map((e) => (
               <button
@@ -340,18 +415,59 @@ export default function Home() {
 
       {/* 三栏工作区：显式像素高度 + contain，Excalidraw 高度才不会失控 */}
       <div className="flex min-h-0 flex-1">
-        {showSources && <SourcesPanel items={items} graph={graph} onClose={() => setShowSources(false)} />}
+        {showSources && (
+          <SourcesPanel
+            items={items}
+            graph={graph}
+            graphMode={graphMode}
+            hotItems={hotItems}
+            onPickHot={pickHot}
+            onClose={() => setShowSources(false)}
+          />
+        )}
 
         <div
-          className="min-w-0 flex-1 [&_.excalidraw]:h-full [&_.excalidraw-wrapper]:h-full"
+          className="relative min-w-0 flex-1 [&_.excalidraw]:h-full [&_.excalidraw-wrapper]:h-full"
           style={{ contain: "size" }}
         >
           {boardMounted ? (
-            <Excalidraw excalidrawAPI={onApiReady} viewModeEnabled={false} gridModeEnabled />
+            <>
+              <Excalidraw excalidrawAPI={onApiReady} viewModeEnabled={false} gridModeEnabled />
+              {/* 画板右上角：导出 .excalidraw（评委/用户可下载后现场拖改导入） */}
+              {graph && (
+                <button
+                  onClick={() => {
+                    const els = apiRef.current?.getSceneElements() ?? [];
+                    const blob = new Blob(
+                      [
+                        JSON.stringify(
+                          { type: "excalidraw", version: 2, source: "https://kanshan-maps.vercel.app", elements: els },
+                          null,
+                          2
+                        ),
+                      ],
+                      { type: "application/json" }
+                    );
+                    const a = document.createElement("a");
+                    a.href = URL.createObjectURL(blob);
+                    a.download = `${((graphMode === "roadmap" ? (graph as unknown as { topic: string }).topic : graph.question) ?? "kanshan-map").slice(0, 30)}.excalidraw`;
+                    a.click();
+                    URL.revokeObjectURL(a.href);
+                  }}
+                  className="absolute right-3 top-3 z-10 flex items-center gap-1.5 rounded-full border border-gray-200 bg-white/90 px-3 py-1.5 text-xs text-gray-500 shadow-sm backdrop-blur transition hover:border-[#0066ff]/50 hover:text-[#0066ff]"
+                  title="下载 .excalidraw 画板文件，可在 excalidraw.com 继续编辑"
+                >
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3" />
+                  </svg>
+                  导出画板
+                </button>
+              )}
+            </>
           ) : (
             <div className="flex h-full flex-col items-center justify-center gap-5 text-center">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/liukanshan/hello.gif" alt="刘看山打招呼" className="h-32 w-32" />
+              <img src="/liukanshan/sanview-wide.jpg" alt="刘看山" className="h-44 w-80 rounded-2xl border border-[#eee] object-cover shadow-sm" />
               <div>
                 <h2 className="mb-2 text-2xl font-bold text-[#1a1a1a]">
                   看山是山，看山不是山，看山还是山
@@ -363,7 +479,10 @@ export default function Home() {
                 </p>
               </div>
               <div className="flex flex-wrap justify-center gap-2 text-sm">
-                {["年轻人该不该买房", "考研还是就业", "AI会取代程序员吗"].map((s) => (
+                {(mode === "viewpoint"
+                  ? ["年轻人该不该买房", "考研还是就业", "AI会取代程序员吗"]
+                  : ["前端入门", "数据分析", "考研政治"]
+                ).map((s) => (
                   <button
                     key={s}
                     onClick={() => setQuestion(s)}

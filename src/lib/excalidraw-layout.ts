@@ -1,6 +1,8 @@
 import type { ViewpointGraph } from "./viewpoints";
+import type { RoadmapGraph } from "./roadmap";
 
 // 调色板：共识=绿，各分歧阵营=蓝/紫/橙/红
+const STAGE_COLORS = ["#b2f2bb", "#a5d8ff", "#d0bfff", "#ffd8a8", "#ffc9c9"];
 const STANCE_COLORS = ["#a5d8ff", "#d0bfff", "#ffd8a8", "#ffc9c9"];
 const CONSENSUS_COLOR = "#b2f2bb";
 
@@ -111,6 +113,57 @@ export function graphToScene(g: ViewpointGraph, followedAuthors: Set<string> = n
     text: `原文链接：\n${srcNote}`, fontSize: 12, fontFamily: 3, strokeColor: "#757575",
     originalText: srcNote, autoResize: true, textAlign: "left",
   });
+
+  return finalize(els);
+}
+
+// 学习路线图布局：阶段横向排列，节点纵向串成路径
+export function roadmapToScene(g: RoadmapGraph): El[] {
+  const els: El[] = [];
+  uid = 0;
+
+  els.push({
+    type: "text", id: nid("title"), x: 60, y: 20, width: 900, height: 40,
+    text: `${g.topic} · 学习路线图`, fontSize: 28, fontFamily: 3, strokeColor: "#1e1e1e",
+    originalText: g.topic, autoResize: true, textAlign: "left",
+  });
+
+  const STAGE_W = 260, STAGE_GAP = 90, X0 = 60, Y0 = 120, ITEM_H = 96, ITEM_GAP = 24;
+  const stageIds: string[] = [];
+
+  g.stages.forEach((stage, si) => {
+    const x = X0 + si * (STAGE_W + STAGE_GAP);
+    const color = STAGE_COLORS[si % STAGE_COLORS.length];
+
+    // 阶段标题块
+    const sid = nid(`stage${si}`);
+    stageIds.push(sid);
+    els.push(...labeledRect(sid, x, Y0, STAGE_W, 56, `${si + 1}. ${stage.title}`, color, 18));
+
+    // 知识点节点
+    let prevId = sid;
+    let prevY = Y0 + 56;
+    stage.items.forEach((it, ii) => {
+      const y = prevY + ITEM_GAP;
+      const id = nid(`s${si}i${ii}`);
+      const label = `${it.topic}\n${it.detail}${it.source ? "\n🔗 原帖" : ""}`;
+      const node = labeledRect(id, x, y, STAGE_W, ITEM_H, label, "#ffffff", 13);
+      // 知识点节点描边用阶段色
+      node[0].strokeColor = color.replace("#b2f2bb", "#40c057").replace("#a5d8ff", "#339af0").replace("#d0bfff", "#845ef7").replace("#ffd8a8", "#f76707").replace("#ffc9c9", "#e03131");
+      if (it.source) node[0].link = it.source;
+      els.push(...node);
+      els.push(...arrow(prevId, id, x + STAGE_W / 2, prevY, x + STAGE_W / 2, y));
+      prevId = id;
+      prevY = y + ITEM_H;
+    });
+  });
+
+  // 阶段间大箭头
+  for (let si = 0; si < stageIds.length - 1; si++) {
+    const x1 = X0 + si * (STAGE_W + STAGE_GAP) + STAGE_W;
+    const x2 = X0 + (si + 1) * (STAGE_W + STAGE_GAP);
+    els.push(...arrow(stageIds[si], stageIds[si + 1], x1, Y0 + 28, x2, Y0 + 28));
+  }
 
   return finalize(els);
 }

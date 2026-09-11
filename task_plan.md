@@ -76,6 +76,17 @@
 - [ ] 演示视频 + 计划书（PDF）
 - [ ] 提交前检查清单过一遍（hackathon.md「提交前检查」7 条）
 
+### Phase 6: 体验与内容丰富化 — status: in_progress
+- [ ] P0 首页热榜落地（不登录也有内容看）：/api/hot + 点击热榜问题直接生成图
+- [ ] P0 SSE 流式生成：先推素材（SourcesPanel 立刻有内容）→ 再推 graph（画板落笔），状态分步可见
+- [ ] P0 导出强化：导出 .excalidraw 文件按钮（评委现场可拖改导入）+ 水印（知乎来源 + 原帖链接已有）
+- [ ] P0 favicon 换刘看山（GIF 抽帧生成 ico/png）
+- [ ] P1 中文字体手绘感：fontFamily 3 被去重到 Excalifont 无中文回退 → 自注册"Xiaolai"/手写中文 woff2 回退链（官方 0.18 自带 Xiaolai 12MB 分包字体，按 metric 子集加载）
+- [ ] P1 学习路线图模式：roadmap 类型 graph + /api/roadmap + 首页模式切换（对照图 / 路线图）
+- [ ] P2 分享：导出 PNG（知乎水印）+ 复制分享文案（知乎想法格式）
+- [ ] P2 Supabase 持久化：maps 表（question/graph/view_count/created_at），热图墙数据基础
+- [ ] UI：减少刘看山 GIF 重复使用（空状态静态化 / 仅保留生成中+Agent 头像两处动图）
+
 ## Errors Encountered
 | Error | Attempt | Resolution |
 |-------|---------|------------|
