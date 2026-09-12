@@ -1,5 +1,14 @@
 # Progress Log — kanshan-maps
 
+## Session 5 — 2026-09-12（Phase 7: 用户反馈修复轮）— complete
+- 上轮交付（commit 1e1c38e，已推 GitHub Laurc2004/kanshan-maps + Vercel 生产 kanshan-maps.vercel.app，Git 集成已连）
+- 用户反馈 5 项：①顶栏左右栏按钮位置交换 ②导出画板→导出图片 ③图展示不全/层叠 ④列表只显示 20 条 + 知乎素材→知乎回答 ⑤看山助手仍改不了图
+- T1 布局引擎 v2：层叠三条根因（autoResize 不换行/放射坐标重叠/旋转出框）→ wrapText 预折行 + 动态卡高 + 网格布局；E2E 断言 6 卡零重叠
+- T2 Agent 改图：后端 curl 正常 + 前端 E2E 内容比对 PASS（之前按元素数断言是误报，改标题本来就不变数量）；真实原因是旧布局层叠让变化不可见；补修挂载竞态守卫（apiRef.current !== api 停旧轮询）
+- T3 素材/助手按钮顺序交换；T4 exportToBlob PNG（E2E 真实下载 前端入门.png）；T5 热榜 30 条（curl 确认）+ tab 改名知乎回答（搜索上限 10 条是知乎 API 硬限制）
+- 验证：lint 0 错 / build 13 路由 / E2E 三项全绿 page errors 清零 / 热榜 30 / 导出下载真实事件
+- 待提交：git commit + push → Vercel 自动部署
+
 ## Session 1 — 2026-09-11
 - 产品定位讨论定稿：「一图看山」知识炼金场赛道，观点对照图 + OAuth 登录 + 关注答主高亮
 - 创建仓库 ~/Documents/code/kanshan-maps（git init -b main）

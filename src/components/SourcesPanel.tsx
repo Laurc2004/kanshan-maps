@@ -40,7 +40,7 @@ export default function SourcesPanel({
           <div className="flex rounded-full border border-gray-200 bg-[#fafaf7] p-0.5 text-xs">
             {(
               [
-                { id: "sources", label: "知乎素材" },
+                { id: "sources", label: "知乎回答" },
                 { id: "hot", label: "知乎热榜" },
               ] as const
             ).map((t) => (

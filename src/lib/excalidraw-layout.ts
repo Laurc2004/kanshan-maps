@@ -2,9 +2,12 @@ import type { ViewpointGraph } from "./viewpoints";
 import type { RoadmapGraph } from "./roadmap";
 
 // ─────────────────────────────────────────────
-// 手绘感布局引擎
-// 观点图：问题居中，立场卡呈放射状散布（角度/大小/旋转带微扰），曲线箭头
-// 路线图：驿站式蜿蜒路径，阶段上下起伏，曲线箭头串联
+// 手绘感布局引擎 v2（防层叠版）
+// 核心原则：
+// 1. 文本预折行：Excalidraw 自由文本 autoResize 不换行，必须按卡宽手动插 \n
+// 2. 卡高由内容行数动态计算，绝不写死
+// 3. 确定性网格/列布局：卡位由构造保证不重叠（而非碰运气）
+// 4. 旋转 ≤±1°，只做点缀不破坏文本对齐
 // ─────────────────────────────────────────────
 
 const STANCE_FILLS = ["#e7f5ff", "#f3f0ff", "#fff4e6", "#ffe3e3"];
@@ -19,6 +22,47 @@ const nid = (p: string) => `${p}_${Date.now().toString(36)}_${uid++}`;
 const rad = (deg: number) => (deg * Math.PI) / 180;
 
 type El = Record<string, unknown>;
+
+// 文本宽度估算：CJK 字宽 ≈ fontSize，ASCII ≈ fontSize*0.55（手写体近似）
+function textWidth(s: string, fontSize: number): number {
+  let w = 0;
+  for (const ch of s) {
+    w += /[\u2E80-\u9FFF\uF900-\uFAFF\uFF00-\uFFEF]/.test(ch) ? fontSize : fontSize * 0.55;
+  }
+  return w;
+}
+
+// 预折行：按 maxWidth 把长文本切成多行（返回 {text 带换行, lines 行数}）
+function wrapText(s: string, fontSize: number, maxWidth: number, maxLines = 8): { text: string; lines: number } {
+  const paras = s.replace(/\r/g, "").split("\n");
+  const out: string[] = [];
+  for (const para of paras) {
+    if (para === "") {
+      out.push("");
+      continue;
+    }
+    let line = "";
+    for (const ch of para) {
+      if (textWidth(line + ch, fontSize) > maxWidth && line.length > 0) {
+        out.push(line);
+        line = ch;
+      } else {
+        line += ch;
+      }
+    }
+    if (line) out.push(line);
+  }
+  const lines = out.slice(0, maxLines);
+  if (out.length > maxLines && lines.length > 0) {
+    // 末行截断加省略号
+    let last = lines[maxLines - 1];
+    if (textWidth(last + "…", fontSize) > maxWidth && last.length > 1) last = last.slice(0, -1);
+    lines[maxLines - 1] = last + "…";
+  }
+  return { text: lines.join("\n"), lines: lines.length };
+}
+
+const LINE_H = 1.25; // Excalidraw text lineHeight
 
 function finalize(els: El[]): El[] {
   let i = 0;
@@ -45,31 +89,38 @@ function finalize(els: El[]): El[] {
     }));
 }
 
-function freeText(
+// 多行自由文本：高度按行数算准
+function block(
   x: number,
   y: number,
-  w: number,
-  h: number,
+  maxW: number,
   text: string,
   fontSize: number,
   color: string,
   align: "left" | "center" = "left",
-): El {
+  maxLines = 8,
+): { el: El; height: number } {
+  const { text: wrapped, lines } = wrapText(text, fontSize, maxW, maxLines);
+  const w = Math.min(maxW, Math.max(...wrapped.split("\n").map((l) => textWidth(l, fontSize)), 40));
+  const h = lines * fontSize * LINE_H;
   return {
-    type: "text",
-    id: nid("txt"),
-    x,
-    y,
-    width: w,
+    el: {
+      type: "text",
+      id: nid("txt"),
+      x,
+      y,
+      width: w,
+      height: h,
+      text: wrapped,
+      fontSize,
+      fontFamily: 5,
+      strokeColor: color,
+      originalText: wrapped,
+      autoResize: true,
+      textAlign: align,
+      lineHeight: LINE_H,
+    },
     height: h,
-    text,
-    fontSize,
-    fontFamily: 5, // 手写中文
-    strokeColor: color,
-    originalText: text,
-    autoResize: true,
-    textAlign: align,
-    lineHeight: 1.25,
   };
 }
 
@@ -98,22 +149,13 @@ function card(
   };
 }
 
-// 三点曲线箭头：bend 为弯曲强度（正负交替让箭头扇形散开）
-function curveArrow(
-  x1: number,
-  y1: number,
-  x2: number,
-  y2: number,
-  color: string,
-  bend = 0,
-  strokeWidth = 2,
-): El {
+// 三点曲线箭头
+function curveArrow(x1: number, y1: number, x2: number, y2: number, color: string, bend = 0, strokeWidth = 2): El {
   const mx = (x1 + x2) / 2;
   const my = (y1 + y2) / 2;
   const dx = x2 - x1;
   const dy = y2 - y1;
   const len = Math.hypot(dx, dy) || 1;
-  // 法线方向偏移
   const ox = (-dy / len) * len * bend;
   const oy = (dx / len) * len * bend;
   return {
@@ -137,7 +179,7 @@ function curveArrow(
   };
 }
 
-// 从矩形中心指向目标方向，求矩形边框上的交点（箭头锚点）
+// 矩形中心→目标方向的边框交点
 function edgePoint(cx: number, cy: number, w: number, h: number, tx: number, ty: number): [number, number] {
   const dx = tx - cx;
   const dy = ty - cy;
@@ -149,114 +191,115 @@ function edgePoint(cx: number, cy: number, w: number, h: number, tx: number, ty:
 }
 
 // ─────────────────────────────────────────────
-// 观点对照图：放射状手绘布局
+// 观点对照图：中心问题 + 2×2 网格立场卡（列内垂直堆叠，构造性防重叠）
 // ─────────────────────────────────────────────
 export function graphToScene(g: ViewpointGraph, followedAuthors: Set<string> = new Set()): El[] {
   const els: El[] = [];
   uid = 0;
 
-  const W = 1560;
-  const cx0 = W / 2;
-  const qy = 180;
+  const CARD_W = 460; // 内文本宽 = 460 - 44 padding
+  const TEXT_W = CARD_W - 44;
+  const COL_GAP = 160; // 中间箭头走廊
+  const ROW_GAP = 60;
+  const X0 = 70;
+  const TITLE_Y = 24;
 
-  // 标题（左上，手写大字）
-  els.push(freeText(64, 28, W - 128, 48, g.question, 34, TITLE_COLOR));
+  // 标题（可折两行）
+  const title = block(X0, TITLE_Y, 1000, g.question, 32, TITLE_COLOR, "left", 2);
+  els.push(title.el);
 
-  // 中心问题胶囊
-  const qW = Math.min(460, 220 + g.question.length * 16);
-  const qH = 88;
-  els.push(card(cx0 - qW / 2, qy, qW, qH, "#fff3bf", "#fab005", { angle: rad(-0.8), strokeWidth: 2.5 }));
-  els.push(
-    freeText(
-      cx0 - qW / 2 + 20,
-      qy + 22,
-      qW - 40,
-      48,
-      `Q · ${g.question.slice(0, 22)}${g.question.length > 22 ? "…" : ""}`,
-      20,
-      "#8a6d00",
-      "center",
-    ),
-  );
+  // 中心问题胶囊：位于两列之间走廊上方
+  const qW = 300;
+  const qText = `Q · ${g.question.slice(0, 16)}${g.question.length > 16 ? "…" : ""}`;
+  const qWrap = wrapText(qText, 18, qW - 36, 2);
+  const qH = Math.max(72, qWrap.lines * 18 * LINE_H + 34);
+  const W = X0 * 2 + CARD_W * 2 + COL_GAP;
+  const qX = (W - qW) / 2;
+  const qY = TITLE_Y + 90;
+  els.push(card(qX, qY, qW, qH, "#fff3bf", "#fab005", { angle: rad(-0.6), strokeWidth: 2.5 }));
+  els.push({
+    ...block(qX + 18, qY + 16, qW - 36, qText, 18, "#8a6d00", "center", 2).el,
+    // 居中手动放
+  });
 
+  // 先算每张卡的内容（得到精确高度），再定位
   const vs = g.viewpoints.slice(0, 4);
-  const n = vs.length;
-
-  // 放射角：从左下到右下扇形散布（度数以问题为中心，向下为正）
-  const fanAngles: number[] =
-    n === 1
-      ? [265]
-      : n === 2
-        ? [215, 325]
-        : n === 3
-          ? [210, 268, 330]
-          : [204, 246, 294, 336];
-
-  // 半径与卡片尺寸微扰：主立场更大
-  const layout = vs.map((_, i) => {
-    const primary = i === 0;
-    const ang = rad(fanAngles[i]);
-    const r = primary ? 470 : 440 + (i % 2) * 36;
-    const cw = (primary ? 470 : 424) - (n === 4 && !primary ? 24 : 0);
-    const ch = primary ? 252 : 226 - (i % 2) * 12;
-    return {
-      ang,
-      cx: cx0 + Math.cos(ang) * r,
-      cy: qy + 60 + Math.abs(Math.sin(ang)) * (primary ? 430 : 470),
-      cw,
-      ch,
-      tilt: rad((i % 2 === 0 ? 1 : -1) * (1.2 + (i % 3) * 0.9)), // 卡片轻微旋转 ±1°~4°
-    };
-  });
-
-  layout.forEach((L, i) => {
-    const v = vs[i];
-    const fill = STANCE_FILLS[i % STANCE_FILLS.length];
-    const stroke = STANCE_STROKES[i % STANCE_STROKES.length];
+  const cards = vs.map((v, i) => {
     const followed = v.authors.some((a) => followedAuthors.has(a));
-    const { cx, cy, cw, ch, tilt } = L;
-
-    els.push(card(cx - cw / 2, cy - ch / 2, cw, ch, fill, stroke, { angle: tilt, strokeWidth: i === 0 ? 2.5 : 2 }));
-
-    // 立场标签（大字）+ 作者行 + 摘要 + 论据（文本保持水平，卡片微旋形成手绘感）
-    els.push(freeText(cx - cw / 2 + 22, cy - ch / 2 + 16, cw - 44, 30, `${followed ? "★ " : ""}${v.stance}`, 22, stroke));
-    els.push(freeText(cx - cw / 2 + 22, cy - ch / 2 + 54, cw - 44, 22, v.authors.slice(0, 3).join(" · "), 13, MUTED));
-    els.push(freeText(cx - cw / 2 + 22, cy - ch / 2 + 84, cw - 44, 84, v.summary.slice(0, 90), 14, "#343a40"));
-    (v.evidence ?? []).slice(0, 2).forEach((ev, ei) => {
-      els.push(
-        freeText(cx - cw / 2 + 22, cy - ch / 2 + 168 + ei * 30, cw - 44, 26, `· ${ev.slice(0, 40)}`, 12, "#495057"),
-      );
-    });
-
-    // 曲线箭头：卡片边框 → 问题胶囊边框，弯曲方向交替
-    const [sx, sy] = edgePoint(cx, cy, cw + 16, ch + 16, cx0, qy + qH / 2);
-    const [ex, ey] = edgePoint(cx0, qy + qH / 2, qW + 24, qH + 24, cx, cy);
-    els.push(curveArrow(sx, sy, ex, ey, stroke, (i % 2 === 0 ? 1 : -1) * 0.14, 2));
+    const stanceT = block(0, 0, TEXT_W, `${followed ? "★ " : ""}${v.stance}`, 21, STANCE_STROKES[i % 4], "left", 1);
+    const authorsT = block(0, 0, TEXT_W, v.authors.slice(0, 3).join(" · "), 13, MUTED, "left", 1);
+    const summaryT = block(0, 0, TEXT_W, v.summary, 14, "#343a40", "left", 4);
+    const evidences = (v.evidence ?? []).slice(0, 2).map((ev) => block(0, 0, TEXT_W - 14, `· ${ev}`, 12, "#495057", "left", 2));
+    const inner =
+      18 + stanceT.height + 6 + authorsT.height + 10 + summaryT.height + 10 +
+      evidences.reduce((a, e) => a + e.height + 4, 0) + 18;
+    return { v, i, followed, stanceT, authorsT, summaryT, evidences, height: Math.max(200, inner) };
   });
 
-  // 共识：底部横条，绿曲线箭头从各卡片汇入（左右位置单调对应，不会交叉）
-  const bottom = Math.max(...layout.map((L) => L.cy + L.ch / 2), qy + qH);
+  // 2×2 网格：左列 0/2，右列 1/3；列内垂直堆叠
+  const positions: { x: number; y: number; w: number; h: number }[] = [];
+  const colHeights = [0, 0];
+  cards.forEach((c, i) => {
+    const col = i % 2;
+    const x = X0 + col * (CARD_W + COL_GAP);
+    const y = qY + qH + 80 + colHeights[col];
+    positions.push({ x, y, w: CARD_W, h: c.height });
+    colHeights[col] += c.height + ROW_GAP;
+  });
+
+  const maxY = Math.max(...positions.map((p) => p.y + p.h), qY + qH);
+
+  cards.forEach((c, i) => {
+    const p = positions[i];
+    const stroke = STANCE_STROKES[i % 4];
+    const fill = STANCE_FILLS[i % 4];
+    const tilt = rad(i % 2 === 0 ? 0.5 : -0.5);
+
+    els.push(card(p.x, p.y, p.w, p.h, fill, stroke, { angle: tilt, strokeWidth: i === 0 ? 2.5 : 2 }));
+
+    let cy = p.y + 18;
+    els.push({ ...c.stanceT.el, x: p.x + 22, y: cy });
+    cy += c.stanceT.height + 6;
+    els.push({ ...c.authorsT.el, x: p.x + 22, y: cy });
+    cy += c.authorsT.height + 10;
+    els.push({ ...c.summaryT.el, x: p.x + 22, y: cy });
+    cy += c.summaryT.height + 10;
+    c.evidences.forEach((e) => {
+      els.push({ ...e.el, x: p.x + 30, y: cy });
+      cy += e.height + 4;
+    });
+
+    // 曲线箭头：卡片内缘 → 问题胶囊（左右方向明确，不交叉）
+    const ccx = p.x + p.w / 2;
+    const ccy = p.y + p.h / 2;
+    const [sx, sy] = edgePoint(ccx, ccy, p.w + 16, p.h + 16, W / 2, qY + qH / 2);
+    const [ex, ey] = edgePoint(W / 2, qY + qH / 2, qW + 24, qH + 24, ccx, ccy);
+    els.push(curveArrow(sx, sy, ex, ey, stroke, (i % 2 === 0 ? 1 : -1) * 0.12, 2));
+  });
+
+  // 共识条：全部卡片下方通栏
   if (g.consensus.length > 0) {
-    const cy0 = bottom + 110;
-    const cH = 56 + Math.min(g.consensus.length, 4) * 30;
-    els.push(card(90, cy0, W - 180, cH, CONSENSUS_FILL, CONSENSUS_STROKE, { angle: rad(0.5) }));
-    els.push(freeText(116, cy0 + 16, 100, 28, "共识", 20, "#2b8a3e"));
-    g.consensus.slice(0, 4).forEach((c, i) => {
-      els.push(freeText(230, cy0 + 16 + i * 28, W - 340, 24, `${i + 1}. ${c.slice(0, 60)}`, 13, "#2b8a3e"));
+    const cy0 = maxY + 90;
+    const cItems = g.consensus.slice(0, 4).map((c, i) => block(0, 0, W - 360, `${i + 1}. ${c}`, 13, "#2b8a3e", "left", 1));
+    const cH = Math.max(64, 18 + cItems.reduce((a, e) => a + e.height + 6, 0) + 14);
+    els.push(card(X0, cy0, W - X0 * 2, cH, CONSENSUS_FILL, CONSENSUS_STROKE, { angle: rad(0.4) }));
+    const label = block(X0 + 24, cy0 + 18, 80, "共识", 20, "#2b8a3e", "left", 1);
+    els.push(label.el);
+    let ly = cy0 + 16;
+    cItems.forEach((e) => {
+      els.push({ ...e.el, x: X0 + 130, y: ly });
+      ly += e.height + 6;
     });
-    layout.forEach((L, i) => {
-      const [sx, sy] = edgePoint(L.cx, L.cy, L.cw + 16, L.ch + 16, L.cx, cy0 + 20);
-      const tx = cx0 + (L.cx - cx0) * 0.6;
-      els.push(curveArrow(sx, sy, tx, cy0 - 4, CONSENSUS_STROKE, (i % 2 === 0 ? -1 : 1) * 0.12, 1.5));
-    });
+    // 问题→共识 单根绿箭头
+    els.push(curveArrow(W / 2, qY + qH + 6, W / 2, cy0 - 6, CONSENSUS_STROKE, 0, 2));
   }
 
   // 来源脚注
   const srcs = vs.flatMap((v) => v.sources).slice(0, 6);
   if (srcs.length > 0) {
-    const sy0 = bottom + 110 + (g.consensus.length > 0 ? 56 + Math.min(g.consensus.length, 4) * 30 + 46 : 20);
+    const sy = maxY + 90 + (g.consensus.length > 0 ? Math.max(64, 18 + g.consensus.slice(0, 4).length * (13 * LINE_H + 6) + 14) + 40 : 20);
     els.push(
-      freeText(64, sy0, W - 128, 20 + srcs.length * 18, srcs.map((s, i) => `[${i + 1}] ${s}`).join("\n"), 11, MUTED),
+      block(X0, sy, 1200, srcs.map((s, i) => `[${i + 1}] ${s}`).join("\n"), 11, MUTED, "left", 6).el,
     );
   }
 
@@ -264,7 +307,7 @@ export function graphToScene(g: ViewpointGraph, followedAuthors: Set<string> = n
 }
 
 // ─────────────────────────────────────────────
-// 学习路线图：驿站式蜿蜒路径
+// 学习路线图：泳道横排（同版式：动态卡高+预折行，构造防重叠）
 // ─────────────────────────────────────────────
 export function roadmapToScene(g: RoadmapGraph): El[] {
   const els: El[] = [];
@@ -273,61 +316,60 @@ export function roadmapToScene(g: RoadmapGraph): El[] {
   const LANE_W = 300;
   const GAP = 110;
   const X0 = 80;
-  const BASE_Y = 210; // 基线（第一站中心 Y）
-  const NODE_H = 110;
-  const NODE_GAP = 20;
+  const Y0 = 150;
+  const NODE_W = LANE_W - 32;
+  const NODE_TEXT_W = NODE_W - 24;
+
+  const title = block(X0 - 16, 24, 1000, `${g.topic} · 学习路线`, 32, TITLE_COLOR, "left", 2);
+  els.push(title.el);
+
   const stages = g.stages.slice(0, 4);
-  const W = X0 + stages.length * (LANE_W + GAP) + 40;
-
-  els.push(freeText(64, 28, W - 128, 48, `${g.topic} · 学习路线`, 34, TITLE_COLOR));
-
-  // 上下起伏的驿站位置（第 1、3 站靠上，2、4 站下沉，形成蜿蜒感）
-  const wave = [0, 170, 60, 230];
-
-  const centers: { x: number; y: number; h: number }[] = [];
+  const lanes: { x: number; y: number; w: number; h: number }[] = [];
 
   stages.forEach((stage, si) => {
     const x = X0 + si * (LANE_W + GAP);
-    const items = stage.items.slice(0, 4);
-    const laneH = 70 + items.length * (NODE_H + NODE_GAP) + 16;
-    const cy = BASE_Y + wave[si % wave.length] + laneH / 2;
-    centers.push({ x: x + LANE_W / 2, y: cy, h: laneH });
-
     const fill = STANCE_FILLS[si % STANCE_FILLS.length];
     const stroke = STANCE_STROKES[si % STANCE_STROKES.length];
 
-    els.push(card(x, cy - laneH / 2, LANE_W, laneH, fill, stroke, { angle: rad(si % 2 === 0 ? 0.6 : -0.6) }));
-    els.push(freeText(x + 18, cy - laneH / 2 + 14, LANE_W - 36, 30, `第${si + 1}站 · ${stage.title}`, 19, stroke));
+    // 阶段标题
+    const headT = block(0, 0, LANE_W - 36, `第${si + 1}站 · ${stage.title}`, 19, stroke, "left", 1);
 
-    items.forEach((it, ii) => {
-      const ny = cy - laneH / 2 + 58 + ii * (NODE_H + NODE_GAP);
-      const nodeEl = card(x + 16, ny, LANE_W - 32, NODE_H, "#ffffff", stroke);
-      if (it.source) nodeEl.link = it.source;
+    // 节点：先算内容高度
+    const items = stage.items.slice(0, 4).map((it) => {
+      const topicT = block(0, 0, NODE_TEXT_W, it.topic, 15, TITLE_COLOR, "left", 1);
+      const detailT = block(0, 0, NODE_TEXT_W, it.detail, 12, MUTED, "left", 3);
+      const srcT = it.source ? block(0, 0, NODE_TEXT_W, "→ 原帖", 11, stroke, "left", 1) : null;
+      const h = 14 + topicT.height + 4 + detailT.height + (srcT ? srcT.height + 2 : 0) + 12;
+      return { it, topicT, detailT, srcT, h: Math.max(86, h) };
+    });
+
+    const NODE_GAP = 20;
+    const laneH = 20 + headT.height + 10 + items.reduce((a, n) => a + n.h + NODE_GAP, 0) + 6;
+    lanes.push({ x, y: Y0, w: LANE_W, h: laneH });
+
+    els.push(card(x, Y0, LANE_W, laneH, fill, stroke, { angle: rad(si % 2 === 0 ? 0.4 : -0.4) }));
+    els.push({ ...headT, x: x + 18, y: Y0 + 20 });
+
+    let ny = Y0 + 20 + headT.height + 10;
+    items.forEach((n) => {
+      const nodeEl = card(x + 16, ny, NODE_W, n.h, "#ffffff", stroke);
+      if (n.it.source) nodeEl.link = n.it.source;
       els.push(nodeEl);
-      els.push(freeText(x + 28, ny + 12, LANE_W - 56, 24, it.topic.slice(0, 20), 15, TITLE_COLOR));
-      els.push(freeText(x + 28, ny + 40, LANE_W - 56, 56, it.detail.slice(0, 48), 12, MUTED));
-      if (it.source) {
-        els.push(freeText(x + 28, ny + NODE_H - 22, LANE_W - 56, 18, "→ 原帖", 11, stroke));
-      }
+      let iy = ny + 12;
+      els.push({ ...n.topicT.el, x: x + 28, y: iy });
+      iy += n.topicT.height + 4;
+      els.push({ ...n.detailT.el, x: x + 28, y: iy });
+      iy += n.detailT.height;
+      if (n.srcT) els.push({ ...n.srcT.el, x: x + 28, y: iy + 2 });
+      ny += n.h + NODE_GAP;
     });
   });
 
-  // 阶段间曲线箭头：上一站右缘 → 下一站左缘，弯曲方向随起伏变化
-  for (let si = 0; si < centers.length - 1; si++) {
-    const a = centers[si];
-    const b = centers[si + 1];
-    const down = b.y > a.y;
-    els.push(
-      curveArrow(
-        a.x + LANE_W / 2 + 8,
-        a.y,
-        b.x - LANE_W / 2 - 8,
-        b.y,
-        "#868e96",
-        down ? 0.16 : -0.16,
-        2.5,
-      ),
-    );
+  // 阶段间曲线箭头（水平走廊 GAP 内，无遮挡）
+  for (let si = 0; si < lanes.length - 1; si++) {
+    const a = lanes[si];
+    const b = lanes[si + 1];
+    els.push(curveArrow(a.x + a.w + 8, a.y + 90, b.x - 8, b.y + 90, "#868e96", si % 2 === 0 ? 0.1 : -0.1, 2.5));
   }
 
   return finalize(els);

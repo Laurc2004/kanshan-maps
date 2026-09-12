@@ -146,6 +146,11 @@ export default function Home() {
       let tries = 0;
       const timer = setInterval(() => {
         tries += 1;
+        // 防挂载竞态：实例被换掉（generate 断开引用）就停止旧轮询
+        if (apiRef.current !== api) {
+          clearInterval(timer);
+          return;
+        }
         if (!els || tries > 40) {
           clearInterval(timer);
           if (tries > 40) console.error("[kanshan] updateScene 注入失败（重试超时）");
@@ -349,19 +354,6 @@ export default function Home() {
               ))}
             </div>
             <button
-              onClick={() => setShowAgent((v) => !v)}
-              title={showAgent ? "隐藏看山助手" : "显示看山助手"}
-              className={`rounded-full border p-2 transition ${
-                showAgent
-                  ? "border-[#0066ff]/30 bg-[#f0f5ff] text-[#0066ff]"
-                  : "border-gray-200 text-gray-400 hover:border-[#0066ff]/30 hover:text-[#0066ff]"
-              }`}
-            >
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M8 10h.01M12 10h.01M16 10h.01M21 12a9 9 0 01-9 9 9 9 0 01-4-.8L3 21l1-3.2A9 9 0 1121 12z" />
-              </svg>
-            </button>
-            <button
               onClick={() => setShowSources((v) => !v)}
               title={showSources ? "隐藏素材栏" : "显示素材栏"}
               className={`rounded-full border p-2 transition ${
@@ -372,6 +364,19 @@ export default function Home() {
             >
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M4 6h16M4 12h10M4 18h7" />
+              </svg>
+            </button>
+            <button
+              onClick={() => setShowAgent((v) => !v)}
+              title={showAgent ? "隐藏看山助手" : "显示看山助手"}
+              className={`rounded-full border p-2 transition ${
+                showAgent
+                  ? "border-[#0066ff]/30 bg-[#f0f5ff] text-[#0066ff]"
+                  : "border-gray-200 text-gray-400 hover:border-[#0066ff]/30 hover:text-[#0066ff]"
+              }`}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M8 10h.01M12 10h.01M16 10h.01M21 12a9 9 0 01-9 9 9 9 0 01-4-.8L3 21l1-3.2A9 9 0 1121 12z" />
               </svg>
             </button>
             <button
@@ -594,34 +599,32 @@ export default function Home() {
                   </div>
                 </div>
               )}
-              {/* 画板右下角：导出 .excalidraw（评委/用户可下载后现场拖改导入） */}
+              {/* 画板右下角：导出 PNG 图片 */}
               {graph && (
                 <button
-                  onClick={() => {
+                  onClick={async () => {
                     const els = apiRef.current?.getSceneElements() ?? [];
-                    const blob = new Blob(
-                      [
-                        JSON.stringify(
-                          { type: "excalidraw", version: 2, source: "https://kanshan-maps.vercel.app", elements: els },
-                          null,
-                          2
-                        ),
-                      ],
-                      { type: "application/json" }
-                    );
+                    if (els.length === 0) return;
+                    const { exportToBlob } = await import("@excalidraw/excalidraw");
+                    const blob = await exportToBlob({
+                      elements: els,
+                      appState: { exportWithDarkMode: false },
+                      files: apiRef.current?.getFiles?.(),
+                      getDimensions: () => ({ width: 1600, height: 900, scale: 2 }),
+                    });
                     const a = document.createElement("a");
                     a.href = URL.createObjectURL(blob);
-                    a.download = `${((graphMode === "roadmap" ? (graph as unknown as { topic: string }).topic : graph.question) ?? "kanshan-map").slice(0, 30)}.excalidraw`;
+                    a.download = `${((graphMode === "roadmap" ? (graph as unknown as { topic: string }).topic : graph.question) ?? "kanshan-map").slice(0, 30)}.png`;
                     a.click();
                     URL.revokeObjectURL(a.href);
                   }}
                   className="absolute bottom-14 right-3 z-10 flex items-center gap-1.5 rounded-full border border-gray-200 bg-white/90 px-3 py-1.5 text-xs text-gray-500 shadow-sm backdrop-blur transition hover:border-[#0066ff]/50 hover:text-[#0066ff]"
-                  title="下载 .excalidraw 画板文件，可在 excalidraw.com 继续编辑"
+                  title="导出 PNG 图片"
                 >
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3" />
                   </svg>
-                  导出画板
+                  导出图片
                 </button>
               )}
             </>

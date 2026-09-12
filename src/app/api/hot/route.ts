@@ -10,7 +10,7 @@ export async function GET() {
     return NextResponse.json({ items: cache.items, cached: true });
   }
   try {
-    const items = await hotList(20);
+    const items = await hotList(30);
     cache.items = items;
     cache.ts = Date.now();
     return NextResponse.json({ items, cached: false });
