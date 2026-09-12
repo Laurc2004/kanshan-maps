@@ -5,6 +5,8 @@ import { buildRoadmapMessages, parseRoadmapJson } from "@/lib/roadmap";
 
 // SSE 流式生成：先推素材（sources）→ 再推图（graph），分步可见
 // mode=viewpoint（观点对照图，默认）/ roadmap（学习路线图）
+// 生成链路（搜索+LLM）实测可达 60-100s，Vercel Hobby 默认 10s 会掐断 → maxDuration 拉满
+export const maxDuration = 300;
 
 const cache = new Map<string, { graph: unknown; items: unknown; ts: number }>();
 const TTL = 1000 * 60 * 60 * 6;
@@ -36,7 +38,7 @@ async function runEngine(
 }
 
 export async function POST(req: NextRequest) {
-  const { question, engine, mode } = await req.json();
+  const { question, engine, mode, items: passedItems } = await req.json();
   if (!question || typeof question !== "string" || question.trim().length < 2) {
     return new Response(sse("error", { error: "请输入有效的问题" }), {
       status: 400,
@@ -46,28 +48,38 @@ export async function POST(req: NextRequest) {
   const q = question.trim();
   const engineId = engine?.id || "builtin";
   const graphMode = mode === "roadmap" ? "roadmap" : "viewpoint";
-  const cacheKey = `${graphMode}:${engineId}:${q.toLowerCase()}`;
+  // 用户自选回答直传（跳过搜索）；缓存键区分，避免污染全量缓存
+  const hasPicked = Array.isArray(passedItems) && passedItems.length > 0;
+  const cacheKey = `${graphMode}:${engineId}:${q.toLowerCase()}${hasPicked ? `:picked${passedItems.length}` : ""}`;
 
   const stream = new ReadableStream({
     async start(controller) {
       const send = (event: string, data: unknown) => controller.enqueue(new TextEncoder().encode(sse(event, data)));
       try {
-        const hit = cache.get(cacheKey);
-        if (hit && Date.now() - hit.ts < TTL) {
-          send("status", { text: "已生成（缓存）" });
-          send("sources", { items: hit.items });
-          send("graph", { graph: hit.graph, mode: graphMode, cached: true });
-          send("done", {});
-          controller.close();
-          return;
+        if (!hasPicked) {
+          const hit = cache.get(cacheKey);
+          if (hit && Date.now() - hit.ts < TTL) {
+            send("status", { text: "已生成（缓存）" });
+            send("sources", { items: hit.items });
+            send("graph", { graph: hit.graph, mode: graphMode, cached: true });
+            send("done", {});
+            controller.close();
+            return;
+          }
         }
 
-        send("status", { text: "正在搜索知乎相关回答…" });
-        const items = await zhihuSearch(q, 10);
-        if (items.length === 0) {
-          send("error", { error: "知乎上没有找到相关内容，换个问法试试" });
-          controller.close();
-          return;
+        let items: typeof passedItems;
+        if (hasPicked) {
+          send("status", { text: `用你选的 ${passedItems.length} 篇回答开始炼图…` });
+          items = passedItems;
+        } else {
+          send("status", { text: "正在搜索知乎相关回答…" });
+          items = await zhihuSearch(q, 10);
+          if (items.length === 0) {
+            send("error", { error: "知乎上没有找到相关内容，换个问法试试" });
+            controller.close();
+            return;
+          }
         }
         // 第一步：素材先到位，SourcesPanel 立刻有内容
         send("sources", { items });

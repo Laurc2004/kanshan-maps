@@ -78,6 +78,18 @@ body {
   border-radius: 10px;
 }
 
+/* 导出按钮：Excalidraw Island 同款视觉（--color-surface-lowest 背景 + 边框 + 阴影变量） */
+.ks-export-btn {
+  border-radius: 10px;
+  border: 1px solid #ecece8;
+  background: var(--color-surface-lowest, #fff);
+  box-shadow: 0 2px 10px rgb(0 0 0 / 0.05);
+  font-family: inherit;
+}
+.ks-export-btn:hover {
+  border-color: #d8e4ff;
+}
+
 /* 选中元素的样式面板配色微调 */
 .excalidraw .Island {
   box-shadow: 0 2px 10px rgb(0 0 0 / 0.05);

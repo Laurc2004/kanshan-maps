@@ -101,6 +101,12 @@
 - [x] T5 列表扩容：热榜 20→30（API 上限 30，curl 确认返回 30）；知乎回答数已是 API 上限 10（docs：Count>10 截断）；tab 改名 知乎素材→知乎回答
 - [x] T6 验证 + 提交：lint 0 错 / build 13 路由全过 / E2E 三项全绿（观点图 6 卡零重叠零超宽；路线图零重叠；Agent 改图 PASS + page errors 清零）/ 热榜 30 条 / 导出图片真实下载
 
+### Phase 8: 用户反馈修复轮 2（导出不全 / 自选素材生成 / 路线图修复）— status: in_progress
+- [ ] T1 导出图片修复：当前 getDimensions 固定 1600×900 会裁掉超界内容 → 改为按元素包围盒自适应导出（exportPadding 留边，2x 缩放）；按钮样式改为 Excalidraw Island 风格（白底/圆角8/轻阴影）；Excalidraw 主题进一步贴合站点（纸感背景/字体/圆角）
+- [ ] T2 自选素材生成：知乎回答卡支持多选（checkbox）+「生成所选」；新增"找回答"入口（只搜索不生成）→ 用户先挑回答再生成；/api/generate/stream 接受 items 直传跳过搜索
+- [ ] T3 学习路线生成不出：先 curl 新关键词复现（排除缓存误判），定位 stream 路由/roadmap 解析/前端模式传递哪一环，修复并 E2E 验证
+- [ ] T4 lint/build/E2E 全绿 + 提交推送（Vercel 自动部署）
+
 ## Errors Encountered
 | Error | Attempt | Resolution |
 |-------|---------|------------|

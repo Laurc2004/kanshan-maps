@@ -231,21 +231,23 @@ export default function Home() {
     }
   }, [restored]);
 
-  const generate = useCallback(async () => {
-    if (!question.trim() || loading) return;
-    setLoading(true);
-    setGenerating(true); // 画板进入生成态
-    setBoardMounted(false); // 清空旧画板，全屏显示生成态
-    apiRef.current = null; // 断开旧 Excalidraw 实例
-    setError(null);
-    setStatus("正在连接看山工作台…");
-    try {
-      // SSE 流式：素材先到（SourcesPanel 立刻有内容），图后到（画板落笔）
-      const res = await fetch("/api/generate/stream", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question, engine, mode }),
-      });
+  const generate = useCallback(
+    async (picked?: SearchResultItem[]) => {
+      if (!question.trim() || loading) return;
+      setLoading(true);
+      setGenerating(true); // 画板进入生成态
+      setBoardMounted(false); // 清空旧画板，全屏显示生成态
+      apiRef.current = null; // 断开旧 Excalidraw 实例
+      setError(null);
+      setStatus("正在连接看山工作台…");
+      try {
+        // SSE 流式：素材先到（SourcesPanel 立刻有内容），图后到（画板落笔）
+        // picked：用户自选回答直传，跳过服务端搜索
+        const res = await fetch("/api/generate/stream", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ question, engine, mode, items: picked }),
+        });
       if (!res.ok || !res.body) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || "生成失败");
@@ -280,8 +282,14 @@ export default function Home() {
             setGraphMode(data.mode === "roadmap" ? "roadmap" : "viewpoint");
             setBoardMounted(true);
             await renderGraph(data.graph, undefined, data.mode);
-            persistBoard(data.graph, data.mode === "roadmap" ? "roadmap" : "viewpoint", question, undefined);
-            setStatus(data.cached ? "已生成（缓存）" : `已生成 · 基于 ${data.sources} 条知乎内容`);
+            persistBoard(data.graph, data.mode === "roadmap" ? "roadmap" : "viewpoint", question, picked);
+            setStatus(
+              data.cached
+                ? "已生成（缓存）"
+                : picked
+                  ? `已生成 · 基于你选的 ${picked.length} 篇回答`
+                  : `已生成 · 基于 ${data.sources} 条知乎内容`
+            );
             setTimeout(() => setStatus(null), 4000);
           } else if (event === "error") {
             throw new Error(data.error || "生成失败");
@@ -295,7 +303,45 @@ export default function Home() {
       setLoading(false);
       setGenerating(false);
     }
-  }, [question, loading, engine, mode, renderGraph, persistBoard]);
+    },
+    [question, loading, engine, mode, renderGraph, persistBoard]
+  );
+
+  // 只找回答不生成（自选素材流程第一步）
+  const findAnswers = useCallback(async () => {
+    if (!question.trim() || loading) return;
+    setLoading(true);
+    setError(null);
+    setStatus("正在搜索知乎回答…");
+    try {
+      const res = await fetch("/api/search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "搜索失败");
+      if (!data.items?.length) throw new Error("知乎上没有找到相关内容，换个问法试试");
+      setItems(data.items);
+      setShowSources(true);
+      setStatus(`找到 ${data.items.length} 篇回答，勾选后点「生成所选」`);
+      setTimeout(() => setStatus(null), 5000);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "搜索失败，请稍后重试");
+      setStatus(null);
+    } finally {
+      setLoading(false);
+    }
+  }, [question, loading]);
+
+  // 左栏「生成所选」：用户勾选的回答直传生成
+  const generateSelected = useCallback(
+    (selected: SearchResultItem[]) => {
+      if (selected.length === 0 || loading) return;
+      generate(selected);
+    },
+    [generate, loading]
+  );
 
   // 热榜点击：弹窗确认后生成
   const pickHot = useCallback((title: string) => {
@@ -442,7 +488,19 @@ export default function Home() {
             disabled={loading}
           />
           <button
-            onClick={generate}
+            onClick={findAnswers}
+            disabled={loading || !question.trim()}
+            className="flex shrink-0 items-center gap-1 rounded-full border border-gray-200 bg-white px-3.5 py-2 text-sm text-gray-500 transition hover:border-[#0066ff]/50 hover:text-[#0066ff] disabled:opacity-50"
+            title="只搜索知乎回答，自己挑素材再生成"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="11" cy="11" r="7" />
+              <path d="M21 21l-4.35-4.35" />
+            </svg>
+            找回答
+          </button>
+          <button
+            onClick={() => generate()}
             data-role="generate"
             disabled={loading || !question.trim()}
             className="flex shrink-0 items-center gap-1.5 rounded-full bg-[#0066ff] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#0052cc] disabled:opacity-50"
@@ -543,6 +601,7 @@ export default function Home() {
             graphMode={graphMode}
             hotItems={hotItems}
             onPickHot={pickHot}
+            onGenerateSelected={generateSelected}
             onClose={() => setShowSources(false)}
           />
         ) : (
@@ -599,18 +658,20 @@ export default function Home() {
                   </div>
                 </div>
               )}
-              {/* 画板右下角：导出 PNG 图片 */}
+              {/* 画板右下角：导出 PNG（Excalidraw Island 风格按钮） */}
               {graph && (
                 <button
                   onClick={async () => {
                     const els = apiRef.current?.getSceneElements() ?? [];
                     if (els.length === 0) return;
                     const { exportToBlob } = await import("@excalidraw/excalidraw");
+                    // 按元素实际包围盒自适应导出，绝不裁内容；2x 高清
                     const blob = await exportToBlob({
                       elements: els,
-                      appState: { exportWithDarkMode: false },
+                      appState: { exportWithDarkMode: false, exportBackground: true },
                       files: apiRef.current?.getFiles?.(),
-                      getDimensions: () => ({ width: 1600, height: 900, scale: 2 }),
+                      exportPadding: 32,
+                      getDimensions: (w: number, h: number) => ({ width: w * 2, height: h * 2, scale: 2 }),
                     });
                     const a = document.createElement("a");
                     a.href = URL.createObjectURL(blob);
@@ -618,7 +679,7 @@ export default function Home() {
                     a.click();
                     URL.revokeObjectURL(a.href);
                   }}
-                  className="absolute bottom-14 right-3 z-10 flex items-center gap-1.5 rounded-full border border-gray-200 bg-white/90 px-3 py-1.5 text-xs text-gray-500 shadow-sm backdrop-blur transition hover:border-[#0066ff]/50 hover:text-[#0066ff]"
+                  className="ks-export-btn absolute bottom-14 right-3 z-10 flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-500 transition hover:text-[#0066ff]"
                   title="导出 PNG 图片"
                 >
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
