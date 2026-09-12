@@ -87,6 +87,26 @@ void describe("picked adapter (no network)", () => {
 });
 
 void describe("zhihu-search adapter", () => {
+  void it("skips malformed entries, records item errors, and preserves valid siblings", async () => {
+    const { collectSources } = await import("./sources.ts");
+    const malformed = [
+      { ...FAKE_ZHIHU_ITEMS[0], ContentID: "" },
+      { ...FAKE_ZHIHU_ITEMS[0], Url: undefined },
+      { ...FAKE_ZHIHU_ITEMS[0], ContentText: 42 },
+    ] as unknown as SearchResultItem[];
+
+    const result = await collectSources(
+      { query: "test", sources: ["zhihu-search"] },
+      undefined,
+      { zhihuSearch: async () => [...malformed, FAKE_ZHIHU_ITEMS[1]] },
+    );
+
+    assert.deepEqual(result.documents.map((doc) => doc.id), ["zhihu-search:zhihu-2"]);
+    assert.equal(result.errors.length, 3);
+    assert.ok(result.errors.every((error) => error.source === "zhihu-search"));
+    assert.ok(result.errors.every((error) => error.message.includes("Malformed search item")));
+  });
+
   void it("caps count at 10 (API limit)", async () => {
     const { collectSources } = await import("./sources.ts");
 
@@ -145,6 +165,30 @@ void describe("global-search adapter", () => {
 });
 
 void describe("zhihu-knowledge adapter", () => {
+  void it("records invalid ids and detail failures while retaining usable list data", async () => {
+    const { collectSources } = await import("./sources.ts");
+    const detailFetcher = mock.fn(async () => { throw new Error("detail unavailable"); });
+
+    const result = await collectSources(
+      { query: "test", sources: ["zhihu-knowledge"] },
+      undefined,
+      {
+        zhihuKnowledgeList: async () => [
+          { work_id: "bad/id", title: "Bad", description: "must be skipped" },
+          { work_id: "usable", title: "Usable", description: "List description remains usable." },
+        ],
+        zhihuKnowledgeDetail: detailFetcher,
+      },
+    );
+
+    assert.equal(detailFetcher.mock.callCount(), 1);
+    assert.deepEqual(result.documents.map((doc) => doc.id), ["zhihu-knowledge:usable"]);
+    assert.equal(result.documents[0].text, "List description remains usable.");
+    assert.equal(result.errors.length, 2);
+    assert.ok(result.errors.some((error) => error.message.includes("Invalid work_id")));
+    assert.ok(result.errors.some((error) => error.message.includes("detail unavailable")));
+  });
+
   void it("normalizes knowledge items to SourceDocument", async () => {
     const { collectSources } = await import("./sources.ts");
 
@@ -166,6 +210,34 @@ void describe("zhihu-knowledge adapter", () => {
 });
 
 void describe("deduplication", () => {
+  void it("deduplicates shared provider content ids across search sources", async () => {
+    const { collectSources } = await import("./sources.ts");
+    const shared = { ...FAKE_ZHIHU_ITEMS[0], ContentID: "shared-provider-id" };
+
+    const result = await collectSources(
+      { query: "test", sources: ["zhihu-search", "global-search"] },
+      undefined,
+      {
+        zhihuSearch: async () => [{ ...shared, Url: "https://www.zhihu.com/answer/one" }],
+        globalSearch: async () => [{ ...shared, Url: "https://example.com/copy" }],
+      },
+    );
+
+    assert.equal(result.documents.length, 1);
+    assert.equal(result.documents[0].sourceType, "zhihu-search");
+    assert.equal(result.documents[0].metadata.contentId, "shared-provider-id");
+  });
+
+  void it("does not deduplicate unrelated documents without provider content ids", async () => {
+    const { deduplicateDocuments } = await import("./sources.ts");
+    const docs: SourceDocument[] = [
+      { ...FAKE_PICKED, id: "picked-a", url: "https://example.com/a" },
+      { ...FAKE_PICKED, id: "picked-b", url: "https://example.com/b" },
+    ];
+
+    assert.equal(deduplicateDocuments(docs).length, 2);
+  });
+
   void it("deduplicates documents with same URL", async () => {
     const { deduplicateDocuments } = await import("./sources.ts");
 
@@ -198,6 +270,37 @@ void describe("deduplication", () => {
 });
 
 void describe("partial adapter failure isolation", () => {
+  void it("propagates an external abort to in-flight fetchers and returns promptly", async () => {
+    const { collectSources } = await import("./sources.ts");
+    const controller = new AbortController();
+    let receivedSignal: AbortSignal | undefined;
+    const neverSettles = new Promise<SearchResultItem[]>(() => {});
+
+    const collecting = collectSources(
+      { query: "test", sources: ["zhihu-search"] },
+      undefined,
+      {
+        zhihuSearch: async (_query, _count, signal) => {
+          receivedSignal = signal;
+          return neverSettles;
+        },
+      },
+      controller.signal,
+    );
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    controller.abort();
+    const result = await Promise.race([
+      collecting,
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error("abort did not return promptly")), 100)),
+    ]);
+
+    assert.equal(receivedSignal?.aborted, true);
+    assert.equal(result.documents.length, 0);
+    assert.equal(result.errors.length, 1);
+    assert.match(result.errors[0].message, /abort/i);
+  });
+
   void it("continues when one adapter fails and preserves other results", async () => {
     const { collectSources } = await import("./sources.ts");
 

@@ -45,16 +45,28 @@ export interface SourceAdapter {
 
 // ─── 超时工具 ──────────────────────────────────────────────────────
 
-function withTimeout<T>(promise: Promise<T>, ms: number, label: string, signal: AbortSignal): Promise<T> {
+function withTimeout<T>(
+  promise: Promise<T>,
+  ms: number,
+  label: string,
+  signal: AbortSignal,
+  parentSignal?: AbortSignal,
+): Promise<T> {
   return new Promise<T>((resolve, reject) => {
-    const onAbort = () => reject(new Error(`${label} timed out after ${ms}ms`));
-    const timer = setTimeout(() => {
-      if (!signal.aborted) onAbort();
-    }, ms);
+    const cleanup = () => {
+      clearTimeout(timer);
+      signal.removeEventListener("abort", onAbort);
+    };
+    const onAbort = () => {
+      cleanup();
+      reject(new Error(parentSignal?.aborted ? `${label} aborted` : `${label} timed out after ${ms}ms`));
+    };
+    const timer = setTimeout(onAbort, ms);
     signal.addEventListener("abort", onAbort, { once: true });
+    if (signal.aborted) onAbort();
     promise.then(
-      (v) => { clearTimeout(timer); signal.removeEventListener("abort", onAbort); resolve(v); },
-      (e) => { clearTimeout(timer); signal.removeEventListener("abort", onAbort); reject(e); },
+      (v) => { cleanup(); resolve(v); },
+      (e) => { cleanup(); reject(e); },
     );
   });
 }
@@ -138,7 +150,7 @@ export function normalizeKnowledgeItem(
 ): SourceDocument {
   if (!validWorkId(item.work_id)) throw new Error("Invalid work_id");
   const title = detail?.chapter_name || item.title;
-  const text = [detail?.introduction, detail?.content].filter(Boolean).join("\n");
+  const text = [detail?.introduction, detail?.content].filter(Boolean).join("\n") || item.description || "";
   return {
     id: `zhihu-knowledge:${item.work_id}`,
     title: title || "（无标题）",
@@ -159,17 +171,22 @@ export function normalizeKnowledgeItem(
 // ─── 去重 ──────────────────────────────────────────────────────────
 
 /**
- * 按 URL 优先、其次 ContentID（id 前缀）去重，保留第一次出现的文档。
+ * 按 URL、provider ContentID、最后内部 id 去重，保留第一次出现的文档。
  */
 export function deduplicateDocuments(docs: SourceDocument[]): SourceDocument[] {
   const seenUrl = new Set<string>();
   const seenId = new Set<string>();
+  const seenContentId = new Set<string>();
   const out: SourceDocument[] = [];
   for (const doc of docs) {
     const idKey = doc.id;
-    if ((doc.url && seenUrl.has(doc.url)) || seenId.has(idKey)) continue;
+    const contentId = doc.metadata.contentId;
+    if ((doc.url && seenUrl.has(doc.url)) ||
+      (typeof contentId === "string" && contentId.length > 0 && seenContentId.has(contentId)) ||
+      seenId.has(idKey)) continue;
     if (doc.url) seenUrl.add(doc.url);
     seenId.add(idKey);
+    if (typeof contentId === "string" && contentId.length > 0) seenContentId.add(contentId);
     out.push(doc);
   }
   return out;
@@ -196,7 +213,7 @@ class NetworkAdapter implements SourceAdapter {
     ctx: AdapterContext,
     fetchers: Fetchers,
     signal?: AbortSignal,
-  ) => Promise<SourceDocument[]>;
+  ) => Promise<{ documents: SourceDocument[]; errors?: Array<{ source: SourceId; message: string }> }>;
 
   constructor(
     source: SourceId,
@@ -205,7 +222,7 @@ class NetworkAdapter implements SourceAdapter {
       ctx: AdapterContext,
       fetchers: Fetchers,
       signal?: AbortSignal,
-    ) => Promise<SourceDocument[]>,
+    ) => Promise<{ documents: SourceDocument[]; errors?: Array<{ source: SourceId; message: string }> }>,
   ) {
     this.source = source;
     this.timeoutMs = timeoutMs;
@@ -215,12 +232,19 @@ class NetworkAdapter implements SourceAdapter {
   async run(ctx: AdapterContext, fetchers: Fetchers, parentSignal?: AbortSignal): Promise<AdapterResult> {
     const controller = new AbortController();
     const abortParent = () => controller.abort();
-    parentSignal?.addEventListener("abort", abortParent, { once: true });
+    if (parentSignal?.aborted) controller.abort();
+    else parentSignal?.addEventListener("abort", abortParent, { once: true });
     const timeoutMs = Math.min(this.timeoutMs, Math.max(1, ctx.budget.millis));
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      const docs = await withTimeout(this.runImpl(ctx, fetchers, controller.signal), timeoutMs, this.source, controller.signal);
-      return { documents: docs, errors: [] };
+      const result = await withTimeout(
+        this.runImpl(ctx, fetchers, controller.signal),
+        timeoutMs,
+        this.source,
+        controller.signal,
+        parentSignal,
+      );
+      return { documents: result.documents, errors: result.errors ?? [] };
     } catch (e) {
       return { documents: [], errors: [{ source: this.source, message: e instanceof Error ? e.message : String(e) }] };
     } finally {
@@ -234,14 +258,20 @@ function zhihuSearchAdapter(timeoutMs: number): SourceAdapter {
   return new NetworkAdapter("zhihu-search", timeoutMs, async (ctx, fetchers, signal) => {
     const fetcher = fetchers.zhihuSearch ?? realZhihuSearch;
     const results: SourceDocument[] = [];
+    const errors: Array<{ source: SourceId; message: string }> = [];
     const queries = ctx.queries && ctx.queries.length > 0 ? ctx.queries : [ctx.query];
     for (const q of queries.slice(0, ctx.budget.queryCount)) {
       const items = await fetcher(q, 10, signal); // Count 上限 10
       for (const item of items) {
-        try { results.push(normalizeSearchItem(item, "zhihu-search")); } catch { /* skip malformed item */ }
+        try {
+          if (typeof item.ContentID !== "string" || item.ContentID.length === 0 ||
+            typeof item.Url !== "string" || item.Url.length === 0 ||
+            typeof item.ContentText !== "string") throw new Error("Malformed search item: ContentID, Url, and ContentText are required strings");
+          results.push(normalizeSearchItem(item, "zhihu-search"));
+        } catch (e) { errors.push({ source: "zhihu-search", message: e instanceof Error ? e.message : String(e) }); }
       }
     }
-    return results;
+    return { documents: results, errors };
   });
 }
 
@@ -250,7 +280,16 @@ function globalSearchAdapter(timeoutMs: number): SourceAdapter {
     const fetcher = fetchers.globalSearch ?? realGlobalSearch;
     const q = (ctx.queries && ctx.queries.length > 0 ? ctx.queries : [ctx.query])[0];
     const items = await fetcher(q, 20, undefined, undefined, signal); // Count 官方上限 20
-    return items.flatMap((it) => { try { return [normalizeSearchItem(it, "global-search")]; } catch { return []; } });
+    const errors: Array<{ source: SourceId; message: string }> = [];
+    const documents = items.flatMap((it) => {
+      try {
+        if (typeof it.ContentID !== "string" || it.ContentID.length === 0 ||
+          typeof it.Url !== "string" || it.Url.length === 0 ||
+          typeof it.ContentText !== "string") throw new Error("Malformed search item: ContentID, Url, and ContentText are required strings");
+        return [normalizeSearchItem(it, "global-search")];
+      } catch (e) { errors.push({ source: "global-search", message: e instanceof Error ? e.message : String(e) }); return []; }
+    });
+    return { documents, errors };
   });
 }
 
@@ -260,17 +299,23 @@ function zhihuKnowledgeAdapter(timeoutMs: number): SourceAdapter {
     const detailFetcher = fetchers.zhihuKnowledgeDetail ?? realZhihuKnowledgeDetail;
     const list = await listFetcher(signal);
     const docs: SourceDocument[] = [];
+    const errors: Array<{ source: SourceId; message: string }> = [];
     for (const item of list.slice(0, ctx.budget.docs)) {
-      if (!validWorkId(item.work_id)) continue;
+      if (!validWorkId(item.work_id)) {
+        errors.push({ source: "zhihu-knowledge", message: "Invalid work_id" });
+        continue;
+      }
       let detail: KnowledgeDetail | undefined;
       try {
         detail = await detailFetcher(item.work_id, signal);
-      } catch {
-        // 详情失败时仍可用列表字段规范化，详情失败不拖垮整个 adapter
+      } catch (e) {
+        errors.push({ source: "zhihu-knowledge", message: e instanceof Error ? e.message : String(e) });
       }
-      try { docs.push(normalizeKnowledgeItem(item, detail)); } catch { /* skip malformed item */ }
+      try { docs.push(normalizeKnowledgeItem(item, detail)); } catch (e) {
+        errors.push({ source: "zhihu-knowledge", message: e instanceof Error ? e.message : String(e) });
+      }
     }
-    return docs;
+    return { documents: docs, errors };
   });
 }
 
@@ -361,6 +406,7 @@ export async function collectSources(
   input: CollectSourcesInput,
   budget?: Partial<HarnessBudget> | { budget?: Partial<HarnessBudget> },
   fetchers?: Fetchers,
+  signal?: AbortSignal,
 ): Promise<CollectResult> {
   // 支持两种传参方式：input.budget 或独立的第二参数（后者优先）
   const effectiveBudget: Partial<HarnessBudget> = {
@@ -382,7 +428,7 @@ export async function collectSources(
 
   const results = await Promise.all(
     adapters.map((a) =>
-      a.run(ctx, deps).catch((e) => ({
+      a.run(ctx, deps, signal).catch((e) => ({
         documents: [] as SourceDocument[],
         errors: [{ source: a.source, message: e instanceof Error ? e.message : String(e) }],
       })),
