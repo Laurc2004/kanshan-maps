@@ -12,6 +12,12 @@ export type SearchResultItem = {
   AuthorAvatar?: string;
   AuthorSignature?: string;
   AuthorityLevel?: string;
+  CommentCount?: number;
+  EditTime?: number;
+  CommentInfoList?: Array<{ Content: string }>;
+  RankingScore?: number;
+  AuthorBadge?: string;
+  AuthorBadgeText?: string;
 };
 
 function headers(oauthToken?: string): Record<string, string> {
@@ -24,15 +30,90 @@ function headers(oauthToken?: string): Record<string, string> {
   return h;
 }
 
-export async function zhihuSearch(query: string, count = 10) {
+export async function zhihuSearch(query: string, count = 10, signal?: AbortSignal) {
   const params = new URLSearchParams({
     Query: query,
     Count: String(Math.min(Math.max(count, 1), 10)),
   });
-  const res = await fetch(`${BASE}/api/v1/content/zhihu_search?${params}`, { headers: headers() });
+  const res = await fetch(`${BASE}/api/v1/content/zhihu_search?${params}`, { headers: headers(), signal });
   const json = await res.json();
   if (json.Code !== 0) throw new Error(`zhihu_search failed: ${json.Code} ${json.Message}`);
   return (json.Data?.Items ?? []) as SearchResultItem[];
+}
+
+/**
+ * 全网搜索 API
+ * Count max 20; optional Filter (advanced syntax) and SearchDB (all/realtime/static)
+ */
+export async function globalSearch(
+  query: string,
+  count = 10,
+  filter?: string,
+  searchDB?: string,
+  signal?: AbortSignal,
+): Promise<SearchResultItem[]> {
+  const params = new URLSearchParams({
+    Query: query,
+    Count: String(Math.min(Math.max(count, 1), 20)),
+  });
+  if (filter) params.set("Filter", filter);
+  if (searchDB) params.set("SearchDB", searchDB);
+
+  const res = await fetch(`${BASE}/api/v1/content/global_search?${params}`, { headers: headers(), signal });
+  const json = await res.json();
+  if (json.Code !== 0) throw new Error(`global_search failed: ${json.Code} ${json.Message}`);
+  return (json.Data?.Items ?? []) as SearchResultItem[];
+}
+
+export type KnowledgeListItem = {
+  work_id: string;
+  title: string;
+  artwork?: string;
+  tab_artwork?: string;
+  description?: string;
+  labels?: string[];
+};
+
+export type KnowledgeDetail = {
+  work_id: string;
+  chapter_name?: string;
+  author_avatar?: string;
+  author_name?: string;
+  labels?: string[];
+  introduction?: string;
+  content?: string;
+};
+
+/**
+ * 知乎知识列表
+ * 无需鉴权; 返回 JSON 数组
+ */
+export async function zhihuKnowledgeList(signal?: AbortSignal): Promise<KnowledgeListItem[]> {
+  const res = await fetch("https://api.zhihu.com/km-indep-home/hackathon/v2/knowledge/list", {
+    headers: { Accept: "application/json" },
+    signal,
+  });
+  if (!res.ok) throw new Error(`knowledge list failed: ${res.status}`);
+  return (await res.json()) as KnowledgeListItem[];
+}
+
+/**
+ * 知乎知识详情
+ * 验证 work_id 后请求; 无需鉴权
+ */
+export async function zhihuKnowledgeDetail(workId: string, signal?: AbortSignal): Promise<KnowledgeDetail> {
+  // Validate work_id per API doc: reject slash, query, hash, newline
+  if (!workId || /[/?#\n\r]/.test(workId)) {
+    throw new Error(`Invalid work_id: ${workId}`);
+  }
+  // Use path encoding to construct safe URL
+  const encoded = encodeURIComponent(workId);
+  const res = await fetch(`https://api.zhihu.com/km-indep-home/hackathon/v2/knowledge/${encoded}`, {
+    headers: { Accept: "application/json" },
+    signal,
+  });
+  if (!res.ok) throw new Error(`knowledge detail failed: ${res.status}`);
+  return (await res.json()) as KnowledgeDetail;
 }
 
 export type ZhidaMessage = { role: string; content: string };

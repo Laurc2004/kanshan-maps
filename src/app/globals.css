@@ -45,6 +45,11 @@ body {
   --ui-font: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
 }
 
+/* Remove only the library entry point; keep drawing tools available. */
+.excalidraw .default-sidebar-trigger {
+  display: none !important;
+}
+
 /* 隐藏主菜单（左上角 Excalidraw logo 菜单）、帮助图标、欢迎屏 */
 .excalidraw .main-menu-trigger,
 .excalidraw .help-icon,
@@ -55,7 +60,6 @@ body {
 }
 
 /* 工具栏只留核心工具：隐藏 图片/mermaid(frame)/laser/魔法帧/嵌入帧/锁 */
-.excalidraw .Stack.Stack_vertical[data-testid="toolbar"] .default-sidebar-trigger,
 .excalidraw [data-testid="toolbar-lock"],
 .excalidraw [data-testid="toolbar-laser"],
 .excalidraw [data-testid="toolbar-laserpointer"],
