@@ -2,45 +2,73 @@
 // Planner 不调用模型；所有类型为确定性校验而设计
 
 export type IntentKind =
-  | "learning"
-  | "time/evolution"
-  | "controversy"
-  | "general";
-
-export type SourceId = "zhihu" | "web" | "zhihu-knowledge" | "picked";
-
-export type LayoutKind =
-  | "concept-map"
+  | "compare"
   | "roadmap"
   | "timeline"
-  | "compare"
+  | "concept-map"
+  | "argument-map"
+  | "summary-board";
+
+export type SourceId =
+  | "picked"
+  | "zhihu-search"
+  | "global-search"
+  | "zhihu-knowledge"
+  | "hot-list"
+  | "zhida";
+
+export type LayoutKind =
   | "debate-grid"
+  | "radial-map"
+  | "timeline"
   | "swimlane-roadmap"
   | "cluster-board"
   | "evidence-tree";
 
-export type PresentationStyle = "default" | "monochrome" | "pastel" | "bold";
+export type PaletteId =
+  | "zhihu-blue"
+  | "paper-pastel"
+  | "research-mono"
+  | "poster-bold"
+  | "nature-notes";
+
+export type Density = "compact" | "comfortable" | "spacious";
+export type StrokeStyle = "clean" | "sketch" | "marker";
+
+export interface HierarchyScale {
+  title: number;
+  keyFinding: number;
+  evidence: number;
+}
 
 export interface PresentationSpec {
-  layout: LayoutKind;
-  style: PresentationStyle;
-  density?: "compact" | "normal" | "spacious";
-  stroke?: "thin" | "normal" | "thick";
-  hierarchy?: "flat" | "nested" | "deep";
+  palette: PaletteId;
+  density: Density;
+  stroke: StrokeStyle;
+  hierarchy: HierarchyScale;
+  style?: string; // style id, must not replace palette
 }
 
 export interface HarnessBudget {
+  queryCount: number;
   docs: number;
+  charsPerDoc: number;
   modelCalls: number;
   millis: number;
+}
+
+export interface SynthesisRequirement {
+  fields: string[];
+  requirements: string[];
 }
 
 export interface RunPlan {
   intent: IntentKind;
   queries: string[];
-  source: SourceId;
+  sources: SourceId[];
+  synthesis: SynthesisRequirement;
   layout: LayoutKind;
-  style: PresentationStyle;
+  style: PaletteId;
   budget: HarnessBudget;
   presentation?: PresentationSpec;
 }
@@ -50,6 +78,7 @@ export type HarnessEventType =
   | "searching"
   | "sources"
   | "synthesizing"
+  | "laying_out"
   | "validating"
   | "graph"
   | "error";
@@ -59,14 +88,23 @@ export interface HarnessEvent {
   data: unknown;
 }
 
-export interface SourceDocument {
+export interface Citation {
   id: string;
+  sourceIndex: number;
   url: string;
   title: string;
-  content: string;
-  source: SourceId;
-  authors?: string[];
-  publishedAt?: string;
+}
+
+export interface SourceDocument {
+  id: string;
+  title: string;
+  url: string;
+  text: string;
+  author: string;
+  sourceType: SourceId;
+  score: number;
+  publishedAt: string;
+  metadata: Record<string, unknown>;
 }
 
 export interface KnowledgeNode {
@@ -92,18 +130,21 @@ export interface KnowledgeGroup {
 }
 
 export interface KnowledgeGraph {
+  kind: LayoutKind;
   title: string;
+  summary: string;
   nodes: KnowledgeNode[];
   edges: KnowledgeEdge[];
   groups: KnowledgeGroup[];
+  citations: Citation[];
   presentation: PresentationSpec;
-  sources: SourceDocument[];
 }
 
 export interface PlanInput {
   query: string;
   intent?: string;
-  source?: string;
+  source?: string;     // deprecated, kept for backward compat
+  sources?: string[];
   layout?: string;
   style?: string;
   queries?: string[];
