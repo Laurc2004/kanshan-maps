@@ -32,6 +32,10 @@ function clamp<T>(value: T | undefined, allowed: readonly T[], fallback: T): T {
 }
 
 function detectIntent(query: string, explicit?: string): IntentKind {
+  // Unknown explicit intent falls back to concept-map (no keyword guessing).
+  if (explicit !== undefined && !ALLOWED_INTENTS.includes(explicit as IntentKind)) {
+    return "concept-map";
+  }
   // If an explicit valid intent is provided, use it
   if (explicit && ALLOWED_INTENTS.includes(explicit as IntentKind)) {
     return explicit as IntentKind;
@@ -205,6 +209,21 @@ export function validatePlan(candidate: RunPlan, input: PlanInput): ValidationRe
   }
   if (input.style && ALLOWED_STYLES.includes(input.style as PaletteId) && candidate.style !== input.style) {
     warnings.push(`Input style "${input.style}" differs from candidate style "${candidate.style}"`);
+  }
+  // Cross-validate explicit sources against candidate sources
+  const candidateSourceSet = new Set(candidate.sources);
+  if (input.sources && input.sources.length > 0) {
+    const inputSources = input.sources.filter((s): s is SourceId => ALLOWED_SOURCES.includes(s as SourceId));
+    const inputSourceSet = new Set(inputSources);
+    const differs = inputSourceSet.size !== candidateSourceSet.size
+      || [...inputSourceSet].some(s => !candidateSourceSet.has(s));
+    if (differs) {
+      warnings.push(`Input sources [${inputSources.join(",")}] differ from candidate sources [${candidate.sources.join(",")}]`);
+    }
+  } else if (input.source && ALLOWED_SOURCES.includes(input.source as SourceId)) {
+    if (!candidateSourceSet.has(input.source as SourceId)) {
+      warnings.push(`Input source "${input.source}" differs from candidate sources [${candidate.sources.join(",")}]`);
+    }
   }
 
   if (errors.length > 0) {

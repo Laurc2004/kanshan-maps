@@ -44,6 +44,12 @@ void describe("fallbackPlan rule-based degradation", () => {
     assert.equal(plan.layout, "radial-map");
   });
 
+  void it("falls unknown explicit intent back to concept-map even when query matches another fallback class", () => {
+    const plan = fallbackPlan({ query: "如何零基础学习价值投资", intent: "banana" as PlanInput["intent"] });
+    assert.equal(plan.intent, "concept-map");
+    assert.equal(plan.layout, "radial-map");
+  });
+
   void it("maps argument-map intent to evidence-tree layout", () => {
     const plan = fallbackPlan({ query: "论证", intent: "argument-map" });
     assert.equal(plan.layout, "evidence-tree");
@@ -180,6 +186,28 @@ void describe("validatePlan contract", () => {
     if (result.ok) {
       assert.ok(result.warnings, "should include warnings when intent differs");
       assert.ok(result.warnings!.some((w: string) => w.includes("intent")), "warning should mention intent");
+    }
+  });
+
+  it("produces a warning when input sources array differs from candidate sources", () => {
+    const input: PlanInput = { query: "x", sources: ["zhida"] };
+    const candidate = fallbackPlan({ query: "x" });
+    const result = validatePlan(candidate, input);
+    assert.equal(result.ok, true);
+    if (result.ok) {
+      assert.ok(result.warnings, "should include warnings when sources differ");
+      assert.ok(result.warnings!.some((w: string) => w.includes("source")), "warning should mention source");
+    }
+  });
+
+  it("produces a warning when deprecated input source differs from candidate sources", () => {
+    const input: PlanInput = { query: "x", source: "hot-list" };
+    const candidate = fallbackPlan({ query: "x" });
+    const result = validatePlan(candidate, input);
+    assert.equal(result.ok, true);
+    if (result.ok) {
+      assert.ok(result.warnings, "should include warnings when deprecated source differs");
+      assert.ok(result.warnings!.some((w: string) => w.includes("source")), "warning should mention source");
     }
   });
 });
