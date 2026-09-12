@@ -8,10 +8,13 @@ export type ViewpointNode = {
   sources: string[];
 };
 
+export type GraphStyle = "default" | "monochrome" | "pastel" | "bold";
+
 export type ViewpointGraph = {
   question: string;
   consensus: string[];
   viewpoints: ViewpointNode[];
+  style?: GraphStyle;
 };
 
 // 指令并入 user 消息末尾（zhida-fast 会忽略 system 指令；其他模型同样兼容此格式）

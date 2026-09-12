@@ -46,6 +46,9 @@ export default function Home() {
   const [showEngineCfg, setShowEngineCfg] = useState(false);
   const [engine, setEngine] = useState<Engine>({ id: "builtin" });
   const [hotItems, setHotItems] = useState<HotItem[]>([]);
+  const [searchOffset, setSearchOffset] = useState(0);
+  const [searchHasMore, setSearchHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [me, setMe] = useState<{ loggedIn: boolean; name?: string }>({ loggedIn: false });
   const [followeeCount, setFolloweeCount] = useState(0);
   const [authNotice, setAuthNotice] = useState<string | null>(null);
@@ -254,6 +257,7 @@ export default function Home() {
       }
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
+      let streamedItems = picked ?? [];
       let buf = "";
       let done = false;
       while (!done) {
@@ -272,8 +276,13 @@ export default function Home() {
           if (event === "status") {
             setStatus(data.text);
           } else if (event === "sources") {
-            // 第一步：素材立刻上栏
-            setItems(data.items ?? []);
+            // 自选生成时保留完整搜索结果，避免只剩被选中的几篇。
+            if (!picked) {
+              streamedItems = data.items ?? [];
+              setItems(streamedItems);
+            }
+            setSearchOffset(streamedItems.length);
+            setSearchHasMore(false);
             setShowSources(true);
           } else if (event === "graph") {
             // 第二步：图落画板
@@ -282,7 +291,7 @@ export default function Home() {
             setGraphMode(data.mode === "roadmap" ? "roadmap" : "viewpoint");
             setBoardMounted(true);
             await renderGraph(data.graph, undefined, data.mode);
-            persistBoard(data.graph, data.mode === "roadmap" ? "roadmap" : "viewpoint", question, picked);
+            persistBoard(data.graph, data.mode === "roadmap" ? "roadmap" : "viewpoint", question, streamedItems);
             setStatus(
               data.cached
                 ? "已生成（缓存）"
@@ -323,6 +332,8 @@ export default function Home() {
       if (!res.ok) throw new Error(data.error || "搜索失败");
       if (!data.items?.length) throw new Error("知乎上没有找到相关内容，换个问法试试");
       setItems(data.items);
+      setSearchOffset(data.items.length);
+      setSearchHasMore(Boolean(data.hasMore));
       setShowSources(true);
       setStatus(`找到 ${data.items.length} 篇回答，勾选后点「生成所选」`);
       setTimeout(() => setStatus(null), 5000);
@@ -333,6 +344,54 @@ export default function Home() {
       setLoading(false);
     }
   }, [question, loading]);
+
+  const loadMoreAnswers = useCallback(async () => {
+    if (!question.trim() || loadingMore || !searchHasMore) return;
+    setLoadingMore(true);
+    try {
+      const res = await fetch("/api/search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question, offset: searchOffset }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "加载失败");
+      const incoming = (data.items ?? []) as SearchResultItem[];
+      setItems((current) => {
+        const seen = new Set(current.map((item) => item.ContentID || item.Url));
+        return [...current, ...incoming.filter((item) => !seen.has(item.ContentID || item.Url))];
+      });
+      setSearchOffset((offset) => offset + incoming.length);
+      setSearchHasMore(Boolean(data.hasMore) && incoming.length > 0);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "加载更多失败");
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [question, loadingMore, searchHasMore, searchOffset]);
+
+  const clearBoard = useCallback(() => {
+    apiRef.current?.updateScene({ elements: [] });
+    apiRef.current = null;
+    pendingRef.current = null;
+    graphRef.current = null;
+    setGraph(null);
+    setItems([]);
+    setQuestion("");
+    setStatus(null);
+    setError(null);
+    setGenerating(false);
+    setBoardMounted(false);
+    setSearchOffset(0);
+    setSearchHasMore(false);
+    setRestored(false);
+    try {
+      localStorage.removeItem(BOARD_KEY);
+      sessionStorage.removeItem(ELEMENTS_KEY);
+    } catch {
+      /* ignore */
+    }
+  }, []);
 
   // 左栏「生成所选」：用户勾选的回答直传生成
   const generateSelected = useCallback(
@@ -423,6 +482,16 @@ export default function Home() {
             >
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M8 10h.01M12 10h.01M16 10h.01M21 12a9 9 0 01-9 9 9 9 0 01-4-.8L3 21l1-3.2A9 9 0 1121 12z" />
+              </svg>
+            </button>
+            <button
+              onClick={clearBoard}
+              disabled={loading || !graph}
+              title="清空画布并回到初始状态"
+              className="rounded-full border border-gray-200 p-2 text-gray-400 transition hover:border-red-200 hover:bg-red-50 hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-30"
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v5M14 11v5" />
               </svg>
             </button>
             <button
@@ -602,6 +671,9 @@ export default function Home() {
             hotItems={hotItems}
             onPickHot={pickHot}
             onGenerateSelected={generateSelected}
+            onLoadMore={loadMoreAnswers}
+            loadingMore={loadingMore}
+            hasMore={searchHasMore}
             onClose={() => setShowSources(false)}
           />
         ) : (
@@ -679,7 +751,7 @@ export default function Home() {
                     a.click();
                     URL.revokeObjectURL(a.href);
                   }}
-                  className="ks-export-btn absolute bottom-14 right-3 z-10 flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-500 transition hover:text-[#0066ff]"
+                  className="ks-export-btn absolute bottom-3 right-3 z-10 flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-500 transition hover:text-[#0066ff]"
                   title="导出 PNG 图片"
                 >
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

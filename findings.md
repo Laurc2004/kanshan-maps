@@ -55,10 +55,10 @@
 - 故事/知识 列表+详情：`https://api.zhihu.com/km-indep-home/hackathon/v2/{story|knowledge}/{list|<work_id>}`
 - 知识接口可用于"学习路线图"场景的补充素材（P1）
 
-### 关键设计影响
-- ⚠️ 答主高亮匹配难题：搜索 Item 只有 AuthorName（昵称），followees 有 Fullname+UrlToken → 只能按昵称字符串匹配，需做归一化（去空格/大小写）
-- ⚠️ 直答额度是开发者级总量 100/天（非每用户）→ 生成结果必须缓存（问题→图 JSON），预生成热门问题，演示用预生成数据
-- Excalidraw 方案定稿：官方 npm @excalidraw/excalidraw 嵌入（excalidraw-cn 已 3 年未更新，仅借鉴其中文字体注册思路）
+## 追加发现：Phase 9
+- 自选生成接口会再次发送 `sources` 事件，但其中只包含用户勾选的回答；前端需要保留原始完整搜索列表，不能直接覆盖素材状态。
+- `zhihu_search` 单次 `Count` 上限仍是 10，但接口支持通过 `Offset` 请求后续批次；素材栏可用滚动触底触发分页。
+- `AGENTS.md` 原先只有 Next.js 自动生成块，已补充项目级 planning-with-files 执行约束。
 
 ## 产品化重构（Phase 3）设计决策 — 2026-09-11
 

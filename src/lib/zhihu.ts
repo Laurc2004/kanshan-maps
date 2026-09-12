@@ -24,8 +24,12 @@ function headers(oauthToken?: string): Record<string, string> {
   return h;
 }
 
-export async function zhihuSearch(query: string, count = 10) {
-  const params = new URLSearchParams({ Query: query, Count: String(Math.min(count, 10)) });
+export async function zhihuSearch(query: string, count = 10, offset = 0) {
+  const params = new URLSearchParams({
+    Query: query,
+    Count: String(Math.min(Math.max(count, 1), 10)),
+    ...(offset > 0 ? { Offset: String(offset) } : {}),
+  });
   const res = await fetch(`${BASE}/api/v1/content/zhihu_search?${params}`, { headers: headers() });
   const json = await res.json();
   if (json.Code !== 0) throw new Error(`zhihu_search failed: ${json.Code} ${json.Message}`);

@@ -1,4 +1,4 @@
-import type { ViewpointGraph, ViewpointNode } from "./viewpoints";
+import type { ViewpointGraph, ViewpointNode, GraphStyle } from "./viewpoints";
 
 // Agent 对话改图的操作语义层
 // Agent 输出操作序列（JSON ops），前端应用后重新布局渲染。
@@ -12,6 +12,7 @@ export type GraphOp =
   | { op: "set_consensus"; consensus: string[] }
   | { op: "add_consensus"; item: string }
   | { op: "rename_question"; question: string }
+  | { op: "set_style"; style: GraphStyle }
   | { op: "relayout" }
   | { op: "reset" };
 
@@ -21,7 +22,7 @@ export type AgentResponse = {
 };
 
 export const AGENT_INSTRUCTION = `你是「一图看山」的画板助手。用户正在编辑一张知乎观点对照图（JSON graph 在下方）。
-graph 结构：{question: string, consensus: string[], viewpoints: [{stance, summary, evidence[], authors[], sources[]}]}
+graph 结构：{question: string, consensus: string[], viewpoints: [{stance, summary, evidence[], authors[], sources[]}], style?: "default"|"monochrome"|"pastel"|"bold"}
 用户会用自然语言要求修改这张图。你必须只输出一个 JSON 对象，不要 markdown，第一个字符必须是 { 最后一个字符必须是 }。
 格式：{"reply":"一句中文解释你做了什么","ops":[操作序列]}
 可用操作：
@@ -32,6 +33,7 @@ graph 结构：{question: string, consensus: string[], viewpoints: [{stance, sum
 - {"op":"set_consensus","consensus":[...]} 重写共识
 - {"op":"add_consensus","item":"..."} 追加一条共识
 - {"op":"rename_question","question":"..."} 改标题
+- {"op":"set_style","style":"default|monochrome|pastel|bold"} 修改整张图的视觉风格
 - {"op":"relayout"} 仅重新布局
 - {"op":"reset"} 撤销本条消息里的全部修改，恢复为用户发消息前的原图
 规则：修改必须基于用户要求和现有 graph；index 必须落在现有 viewpoints 范围内，不能凭空引用不存在的立场；不要编造知乎链接；无法做到时在 reply 中说明并给空 ops。`;
@@ -136,6 +138,13 @@ export function applyOps(
             applied.push(`${tag}：标题改为「${g.question}」`);
           }
           break;
+        case "set_style": {
+          const styles: GraphStyle[] = ["default", "monochrome", "pastel", "bold"];
+          if (!styles.includes(op.style)) throw new Error("不支持的图表风格");
+          g.style = op.style;
+          applied.push(`${tag}：图表风格已改为「${op.style}」`);
+          break;
+        }
         case "relayout":
           applied.push(`${tag}：重新布局`);
           break;

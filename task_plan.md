@@ -101,11 +101,20 @@
 - [x] T5 列表扩容：热榜 20→30（API 上限 30，curl 确认返回 30）；知乎回答数已是 API 上限 10（docs：Count>10 截断）；tab 改名 知乎素材→知乎回答
 - [x] T6 验证 + 提交：lint 0 错 / build 13 路由全过 / E2E 三项全绿（观点图 6 卡零重叠零超宽；路线图零重叠；Agent 改图 PASS + page errors 清零）/ 热榜 30 条 / 导出图片真实下载
 
-### Phase 8: 用户反馈修复轮 2（导出不全 / 自选素材生成 / 路线图修复）— status: in_progress
-- [ ] T1 导出图片修复：当前 getDimensions 固定 1600×900 会裁掉超界内容 → 改为按元素包围盒自适应导出（exportPadding 留边，2x 缩放）；按钮样式改为 Excalidraw Island 风格（白底/圆角8/轻阴影）；Excalidraw 主题进一步贴合站点（纸感背景/字体/圆角）
-- [ ] T2 自选素材生成：知乎回答卡支持多选（checkbox）+「生成所选」；新增"找回答"入口（只搜索不生成）→ 用户先挑回答再生成；/api/generate/stream 接受 items 直传跳过搜索
-- [ ] T3 学习路线生成不出：先 curl 新关键词复现（排除缓存误判），定位 stream 路由/roadmap 解析/前端模式传递哪一环，修复并 E2E 验证
-- [ ] T4 lint/build/E2E 全绿 + 提交推送（Vercel 自动部署）
+### Phase 8: 用户反馈修复轮 2（导出不全 / 自选素材生成 / 路线图修复）— status: complete
+- [x] T1 导出图片修复：getDimensions 按包围盒自适应（w*2,h*2,scale 2）+ exportPadding 32 → E2E 断言 PNG 2291×2002 完整覆盖 1080×937 内容；按钮改 Island 风格（ks-export-btn：白底/圆角10/轻阴影，复用 --color-surface-lowest）；Excalidraw Island 面板同步加边框+柔化阴影贴合站点
+- [x] T2 自选素材生成：新流程「找回答」（/api/search 只搜不生成）→ 左栏勾选多篇 → 「生成所选」浮条直传 items 跳过服务端搜索（缓存键隔离 picked）；E2E：10 回答→勾3→生成"基于你选的 3 篇回答"
+- [x] T3 学习路线修复：本地复现发现后端正常但链路 22-110s，根因 = Vercel Hobby 默认函数 10s 超时掐断 SSE → stream 路由加 export const maxDuration = 300；生产实测 23.2s 返回 graph 事件 ✅
+- [x] T4 验证+交付：lint 0 错 / build 过（含新 /api/search）/ E2E 全绿 / commit e82fdc9 已推 / 生产部署 Ready + roadmap 实测通过
+
+### Phase 9: 用户反馈修复轮 3（素材连续浏览 / 清空画布 / Agent 样式）— status: complete
+- [x] T1 导出按钮贴到画布最右下角（bottom-3/right-3）
+- [x] T2 自选文章生成后保留完整搜索结果，不再被生成接口返回的所选子集覆盖；缓存同步保存完整素材
+- [x] T3 搜索接口与素材栏增加 offset/hasMore 分页、滚动近底自动加载和手动继续加载入口
+- [x] T4 顶栏增加一键清空画布，重置 graph、问题、素材、Excalidraw 场景及本地/session 缓存
+- [x] T5 看山助手增加 set_style 语义操作，支持 default / monochrome / pastel / bold 并由布局器真实换色
+- [x] T6 项目治理：AGENTS.md 约束每轮多步骤迭代必须先使用 planning-with-files，并持续维护三份 planning 文件
+- [x] T7 验证：npm run lint / npx tsc --noEmit / npm run build / git diff --check 全通过；本地 3001 首页与分页搜索 API 均返回 200
 
 ## Errors Encountered
 | Error | Attempt | Resolution |

@@ -1,5 +1,18 @@
 # Progress Log — kanshan-maps
 
+## Session 7 — 2026-09-12（Phase 9: 用户反馈修复轮 3）— complete
+- 补齐上一轮遗漏的规划记录：导出位置、搜索结果保留、继续加载、清空画布、Agent 样式修改均已实现
+- 项目治理：更新 `AGENTS.md`，明确每次多步骤迭代必须先使用 `planning-with-files`，并维护 `task_plan.md` / `findings.md` / `progress.md`
+- 验证：`npm run lint`、`npx tsc --noEmit`、`npm run build`、`git diff --check` 全通过；开发服务器实际端口为 3001，首页和 `/api/search` 均返回 200
+
+## Session 6 — 2026-09-12（Phase 8: 反馈修复轮 2）— complete
+- 用户反馈 3 项：①导出图片不全 + 按钮要贴 Excalidraw 风格 ②支持自选多篇回答生成 ③学习路线生成不出
+- T3 根因：路线图链路 22-110s，Vercel Hobby 函数默认 10s 超时掐断 SSE（本地 dev 无此限制所以此前 E2E 全绿没暴露）；maxDuration=300 修复，生产实测 23.2s 出图
+- T1：导出改包围盒自适应 2x（E2E：PNG 2291×2002 ≥ 内容 1080×937×1.9）；按钮 Island 化（复用 Excalidraw surface 变量）
+- T2：找回答（/api/search）→ 勾选 → 生成所选（items 直传，缓存键隔离）；E2E 全流程绿
+- 注意坑：exportToBlob 的 getDimensions 在给 maxWidthOrHeight 时会被忽略；scale 要配合 width/height 手动翻倍才是真 2x
+- 交付：commit e82fdc9 推送，生产部署 Ready，roadmap 生产实测通过
+
 ## Session 5 — 2026-09-12（Phase 7: 用户反馈修复轮）— complete
 - 上轮交付（commit 1e1c38e，已推 GitHub Laurc2004/kanshan-maps + Vercel 生产 kanshan-maps.vercel.app，Git 集成已连）
 - 用户反馈 5 项：①顶栏左右栏按钮位置交换 ②导出画板→导出图片 ③图展示不全/层叠 ④列表只显示 20 条 + 知乎素材→知乎回答 ⑤看山助手仍改不了图

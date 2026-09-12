@@ -17,6 +17,13 @@ const CONSENSUS_STROKE = "#40c057";
 const TITLE_COLOR = "#1a1a1a";
 const MUTED = "#757575";
 
+function palette(style: ViewpointGraph["style"] = "default") {
+  if (style === "monochrome") return { fills: ["#f1f3f5", "#e9ecef", "#dee2e6", "#ced4da"], strokes: ["#343a40", "#495057", "#343a40", "#495057"], consensusFill: "#f1f3f5", consensusStroke: "#495057", title: "#212529", muted: "#868e96" };
+  if (style === "pastel") return { fills: ["#e8f7ff", "#fff0f6", "#fff9db", "#ebfbee"], strokes: ["#74c0fc", "#f783ac", "#fcc419", "#69db7c"], consensusFill: "#ebfbee", consensusStroke: "#69db7c", title: "#343a40", muted: "#868e96" };
+  if (style === "bold") return { fills: ["#d0ebff", "#e5dbff", "#ffe8cc", "#ffc9c9"], strokes: ["#1971c2", "#6741d9", "#d9480f", "#c92a2a"], consensusFill: "#d3f9d8", consensusStroke: "#2f9e44", title: "#212529", muted: "#495057" };
+  return { fills: STANCE_FILLS, strokes: STANCE_STROKES, consensusFill: CONSENSUS_FILL, consensusStroke: CONSENSUS_STROKE, title: TITLE_COLOR, muted: MUTED };
+}
+
 let uid = 0;
 const nid = (p: string) => `${p}_${Date.now().toString(36)}_${uid++}`;
 const rad = (deg: number) => (deg * Math.PI) / 180;
@@ -196,7 +203,7 @@ function edgePoint(cx: number, cy: number, w: number, h: number, tx: number, ty:
 export function graphToScene(g: ViewpointGraph, followedAuthors: Set<string> = new Set()): El[] {
   const els: El[] = [];
   uid = 0;
-
+  const colors = palette(g.style);
   const CARD_W = 460; // 内文本宽 = 460 - 44 padding
   const TEXT_W = CARD_W - 44;
   const COL_GAP = 160; // 中间箭头走廊
@@ -205,7 +212,7 @@ export function graphToScene(g: ViewpointGraph, followedAuthors: Set<string> = n
   const TITLE_Y = 24;
 
   // 标题（可折两行）
-  const title = block(X0, TITLE_Y, 1000, g.question, 32, TITLE_COLOR, "left", 2);
+  const title = block(X0, TITLE_Y, 1000, g.question, 32, colors.title, "left", 2);
   els.push(title.el);
 
   // 中心问题胶囊：位于两列之间走廊上方
@@ -226,10 +233,10 @@ export function graphToScene(g: ViewpointGraph, followedAuthors: Set<string> = n
   const vs = g.viewpoints.slice(0, 4);
   const cards = vs.map((v, i) => {
     const followed = v.authors.some((a) => followedAuthors.has(a));
-    const stanceT = block(0, 0, TEXT_W, `${followed ? "★ " : ""}${v.stance}`, 21, STANCE_STROKES[i % 4], "left", 1);
-    const authorsT = block(0, 0, TEXT_W, v.authors.slice(0, 3).join(" · "), 13, MUTED, "left", 1);
-    const summaryT = block(0, 0, TEXT_W, v.summary, 14, "#343a40", "left", 4);
-    const evidences = (v.evidence ?? []).slice(0, 2).map((ev) => block(0, 0, TEXT_W - 14, `· ${ev}`, 12, "#495057", "left", 2));
+    const stanceT = block(0, 0, TEXT_W, `${followed ? "★ " : ""}${v.stance}`, 21, colors.strokes[i % 4], "left", 1);
+    const authorsT = block(0, 0, TEXT_W, v.authors.slice(0, 3).join(" · "), 13, colors.muted, "left", 1);
+    const summaryT = block(0, 0, TEXT_W, v.summary, 14, colors.title, "left", 4);
+    const evidences = (v.evidence ?? []).slice(0, 2).map((ev) => block(0, 0, TEXT_W - 14, `· ${ev}`, 12, colors.muted, "left", 2));
     const inner =
       18 + stanceT.height + 6 + authorsT.height + 10 + summaryT.height + 10 +
       evidences.reduce((a, e) => a + e.height + 4, 0) + 18;
@@ -251,8 +258,8 @@ export function graphToScene(g: ViewpointGraph, followedAuthors: Set<string> = n
 
   cards.forEach((c, i) => {
     const p = positions[i];
-    const stroke = STANCE_STROKES[i % 4];
-    const fill = STANCE_FILLS[i % 4];
+    const stroke = colors.strokes[i % 4];
+    const fill = colors.fills[i % 4];
     const tilt = rad(i % 2 === 0 ? 0.5 : -0.5);
 
     els.push(card(p.x, p.y, p.w, p.h, fill, stroke, { angle: tilt, strokeWidth: i === 0 ? 2.5 : 2 }));
@@ -280,10 +287,10 @@ export function graphToScene(g: ViewpointGraph, followedAuthors: Set<string> = n
   // 共识条：全部卡片下方通栏
   if (g.consensus.length > 0) {
     const cy0 = maxY + 90;
-    const cItems = g.consensus.slice(0, 4).map((c, i) => block(0, 0, W - 360, `${i + 1}. ${c}`, 13, "#2b8a3e", "left", 1));
+    const cItems = g.consensus.slice(0, 4).map((c, i) => block(0, 0, W - 360, `${i + 1}. ${c}`, 13, colors.consensusStroke, "left", 1));
     const cH = Math.max(64, 18 + cItems.reduce((a, e) => a + e.height + 6, 0) + 14);
-    els.push(card(X0, cy0, W - X0 * 2, cH, CONSENSUS_FILL, CONSENSUS_STROKE, { angle: rad(0.4) }));
-    const label = block(X0 + 24, cy0 + 18, 80, "共识", 20, "#2b8a3e", "left", 1);
+    els.push(card(X0, cy0, W - X0 * 2, cH, colors.consensusFill, colors.consensusStroke, { angle: rad(0.4) }));
+    const label = block(X0 + 24, cy0 + 18, 80, "共识", 20, colors.consensusStroke, "left", 1);
     els.push(label.el);
     let ly = cy0 + 16;
     cItems.forEach((e) => {
@@ -291,7 +298,7 @@ export function graphToScene(g: ViewpointGraph, followedAuthors: Set<string> = n
       ly += e.height + 6;
     });
     // 问题→共识 单根绿箭头
-    els.push(curveArrow(W / 2, qY + qH + 6, W / 2, cy0 - 6, CONSENSUS_STROKE, 0, 2));
+    els.push(curveArrow(W / 2, qY + qH + 6, W / 2, cy0 - 6, colors.consensusStroke, 0, 2));
   }
 
   // 来源脚注
