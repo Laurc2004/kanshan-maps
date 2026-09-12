@@ -22,6 +22,17 @@ const Excalidraw = dynamic(() => import("@excalidraw/excalidraw").then((m) => m.
 type Engine = { id: string; baseURL?: string; apiKey?: string; model?: string };
 type Mode = "viewpoint" | "roadmap";
 
+// 本地缓存：graph 结构化数据（localStorage），画板元素序列化体积大放 sessionStorage
+const BOARD_KEY = "kanshan.board.v1";
+const ELEMENTS_KEY = "kanshan.elements.v1";
+type BoardCache = {
+  graph: ViewpointGraph;
+  mode: Mode;
+  question: string;
+  items?: unknown[];
+  savedAt: number;
+};
+
 export default function Home() {
   const [question, setQuestion] = useState("");
   const [mode, setMode] = useState<Mode>("viewpoint");
@@ -48,6 +59,7 @@ export default function Home() {
   const [showAgent, setShowAgent] = useState(true); // 右栏可收缩
   const [pendingHot, setPendingHot] = useState<string | null>(null); // 热榜确认弹窗
   const [generating, setGenerating] = useState(false); // 画板生成中遮罩
+  const [restored, setRestored] = useState(false); // 是否从缓存恢复
 
   // 启动：读登录态 + 处理 OAuth 回调错误参数 + 拉热榜
   useEffect(() => {
@@ -59,6 +71,26 @@ export default function Home() {
       .then((r) => (r.ok ? r.json() : Promise.reject()))
       .then((d) => setHotItems(d.items ?? []))
       .catch(() => {});
+    // 恢复上次画板（问题 4：下次打开还有缓存）
+    // 微任务里 setState，绕开 effect 内同步 setState 告警（同 authError 处理）
+    queueMicrotask(() => {
+      try {
+        const raw = localStorage.getItem(BOARD_KEY);
+        if (!raw) return;
+        const cache = JSON.parse(raw) as BoardCache;
+        const g = cache.graph as { viewpoints?: unknown[]; stages?: unknown[] } | null;
+        if (!cache.graph || !(Array.isArray(g?.viewpoints) || Array.isArray(g?.stages))) return;
+        setGraph(cache.graph);
+        graphRef.current = cache.graph;
+        setGraphMode(cache.mode === "roadmap" ? "roadmap" : "viewpoint");
+        if (cache.question) setQuestion(cache.question);
+        if (Array.isArray(cache.items)) setItems(cache.items as SearchResultItem[]);
+        setBoardMounted(true);
+        setRestored(true);
+      } catch {
+        /* 缓存损坏则忽略 */
+      }
+    });
     const sp = new URLSearchParams(window.location.search);
     const authError = sp.get("auth_error");
     if (authError) {
@@ -97,8 +129,16 @@ export default function Home() {
   const onApiReady = useCallback((api: ExcalidrawImperativeAPI) => {
     apiRef.current = api;
     if (typeof window !== "undefined") (window as unknown as Record<string, unknown>).__excal = api;
-    if (pendingRef.current) {
-      const els = pendingRef.current;
+    // 优先恢复上次保存的画板元素（含用户手动调整）
+    let cachedEls: unknown[] | null = null;
+    try {
+      const raw = sessionStorage.getItem(ELEMENTS_KEY);
+      if (raw) cachedEls = JSON.parse(raw);
+    } catch {
+      /* ignore */
+    }
+    const els = cachedEls ?? pendingRef.current;
+    if (els) {
       // 注意：这里不能只在回调后固定 setTimeout 注入。
       // excalidrawAPI 回调先于内部 _App 挂载（顺序取决于动态 chunk 加载时机），
       // 过早 updateScene 会命中 "setState on unmounted" 被静默丢弃（已复现）。
@@ -122,11 +162,35 @@ export default function Home() {
     }
   }, []);
 
+  // 画板状态持久化：graph 放 localStorage，元素快照放 sessionStorage（体积大、跨会话不必保真）
+  const persistBoard = useCallback((g: ViewpointGraph, m: Mode, q: string, its?: SearchResultItem[]) => {
+    try {
+      const cache: BoardCache = { graph: g, mode: m, question: q, items: its, savedAt: Date.now() };
+      localStorage.setItem(BOARD_KEY, JSON.stringify(cache));
+    } catch {
+      /* 配额满则忽略 */
+    }
+  }, []);
+  const persistElements = useCallback(() => {
+    try {
+      const els = apiRef.current?.getSceneElements() ?? [];
+      if (els.length > 0) sessionStorage.setItem(ELEMENTS_KEY, JSON.stringify(els));
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
   const renderGraph = useCallback(async (g: ViewpointGraph, followed?: Set<string>, m: Mode = "viewpoint") => {
     const layout = await import("@/lib/excalidraw-layout");
     const elements = (
       m === "roadmap" ? layout.roadmapToScene(g as never) : layout.graphToScene(g, followed ?? followeesRef.current)
     ) as never[];
+    // 新图覆盖旧缓存元素
+    try {
+      sessionStorage.removeItem(ELEMENTS_KEY);
+    } catch {
+      /* ignore */
+    }
     if (apiRef.current) {
       apiRef.current.updateScene({ elements });
       setTimeout(
@@ -142,6 +206,25 @@ export default function Home() {
   useEffect(() => {
     renderGraphRef.current = renderGraph;
   }, [renderGraph]);
+
+  // 关闭/切走页面前保存画板元素（含用户手动调整）
+  useEffect(() => {
+    const onHide = () => persistElements();
+    window.addEventListener("beforeunload", onHide);
+    document.addEventListener("visibilitychange", onHide);
+    return () => {
+      window.removeEventListener("beforeunload", onHide);
+      document.removeEventListener("visibilitychange", onHide);
+    };
+  }, [persistElements]);
+
+  // 缓存恢复提示：几秒后自动消失
+  useEffect(() => {
+    if (restored) {
+      const t = setTimeout(() => setRestored(false), 5000);
+      return () => clearTimeout(t);
+    }
+  }, [restored]);
 
   const generate = useCallback(async () => {
     if (!question.trim() || loading) return;
@@ -192,6 +275,7 @@ export default function Home() {
             setGraphMode(data.mode === "roadmap" ? "roadmap" : "viewpoint");
             setBoardMounted(true);
             await renderGraph(data.graph, undefined, data.mode);
+            persistBoard(data.graph, data.mode === "roadmap" ? "roadmap" : "viewpoint", question, undefined);
             setStatus(data.cached ? "已生成（缓存）" : `已生成 · 基于 ${data.sources} 条知乎内容`);
             setTimeout(() => setStatus(null), 4000);
           } else if (event === "error") {
@@ -206,7 +290,7 @@ export default function Home() {
       setLoading(false);
       setGenerating(false);
     }
-  }, [question, loading, engine, mode, renderGraph]);
+  }, [question, loading, engine, mode, renderGraph, persistBoard]);
 
   // 热榜点击：弹窗确认后生成
   const pickHot = useCallback((title: string) => {
@@ -223,14 +307,15 @@ export default function Home() {
     }, 0);
   }, [pendingHot]);
 
-  // Agent 对话修改后的 graph 回灌画板
+  // Agent 对话修改后的 graph 回灌画板（按当前图类型选布局器）
   const applyAgentGraph = useCallback(
     (g: ViewpointGraph) => {
       setGraph(g);
       graphRef.current = g;
-      renderGraph(g);
+      renderGraph(g, undefined, graphMode);
+      persistBoard(g, graphMode, question);
     },
-    [renderGraph]
+    [renderGraph, graphMode, question, persistBoard]
   );
 
   return (
@@ -429,7 +514,7 @@ export default function Home() {
       )}
 
       {/* 状态条 */}
-      {(status || error) && (
+      {(status || error || restored) && (
         <div
           className={`flex shrink-0 items-center gap-2 px-5 py-1.5 text-xs ${
             error ? "bg-red-50 text-red-600" : "bg-[#f0f5ff] text-[#0066ff]"
@@ -439,13 +524,14 @@ export default function Home() {
             /* eslint-disable-next-line @next/next/no-img-element */
             <img src="/liukanshan/working.gif" alt="" className="h-4 w-4" />
           )}
-          {error ?? status}
+          {error ?? status ?? "已恢复上次生成的画板"}
         </div>
       )}
 
       {/* 三栏工作区：显式像素高度 + contain，Excalidraw 高度才不会失控 */}
       <div className="flex min-h-0 flex-1">
-        {showSources && (
+        {/* 左栏：展开=面板；收起=细条（点击细条重新展开），与右栏交互一致 */}
+        {showSources ? (
           <SourcesPanel
             items={items}
             graph={graph}
@@ -454,6 +540,17 @@ export default function Home() {
             onPickHot={pickHot}
             onClose={() => setShowSources(false)}
           />
+        ) : (
+          <button
+            onClick={() => setShowSources(true)}
+            title="展开素材栏"
+            className="flex w-10 shrink-0 flex-col items-center justify-center gap-2 border-r border-[#e8e8e3] bg-white text-gray-400 transition hover:bg-[#f0f5ff] hover:text-[#0066ff]"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M9 18l6-6-6-6" />
+            </svg>
+            <span className="text-[10px] [writing-mode:vertical-rl]">素材</span>
+          </button>
         )}
 
         <div
@@ -462,7 +559,25 @@ export default function Home() {
         >
           {boardMounted ? (
             <>
-              <Excalidraw excalidrawAPI={onApiReady} viewModeEnabled={false} gridModeEnabled />
+              <Excalidraw
+                excalidrawAPI={onApiReady}
+                viewModeEnabled={false}
+                langCode="zh-CN"
+                UIOptions={{
+                  canvasActions: {
+                    loadScene: false,
+                    export: false,
+                    saveToActiveFile: false,
+                    saveAsImage: false,
+                    clearCanvas: false,
+                    changeViewBackgroundColor: false,
+                    toggleTheme: false,
+                  },
+                  tools: {
+                    image: false,
+                  },
+                }}
+              />
               {/* 生成中遮罩：盖在旧图上 */}
               {generating && (
                 <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-5 bg-white/85 backdrop-blur-sm">
@@ -569,11 +684,12 @@ export default function Home() {
           <button
             onClick={() => setShowAgent(true)}
             title="展开看山助手"
-            className="flex w-10 shrink-0 items-center justify-center border-l border-[#e8e8e3] bg-white text-gray-400 transition hover:bg-[#f0f5ff] hover:text-[#0066ff]"
+            className="flex w-10 shrink-0 flex-col items-center justify-center gap-2 border-l border-[#e8e8e3] bg-white text-gray-400 transition hover:bg-[#f0f5ff] hover:text-[#0066ff]"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M15 18l-6-6 6-6" />
+              <path d="M9 18l6-6-6-6" />
             </svg>
+            <span className="text-[10px] [writing-mode:vertical-rl]">助手</span>
           </button>
         )}
       </div>

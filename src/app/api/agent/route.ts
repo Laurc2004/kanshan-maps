@@ -13,6 +13,8 @@ export async function POST(req: NextRequest) {
     }
 
     const messages = buildAgentMessages(history ?? [], graph as ViewpointGraph, message);
+    // 原图快照：reset 操作恢复用（deep copy 在 applyOps 内做）
+    const originalGraph = JSON.parse(JSON.stringify(graph)) as ViewpointGraph;
 
     const engineId = engine?.id || "builtin";
     let raw: string;
@@ -37,7 +39,11 @@ export async function POST(req: NextRequest) {
 
     const parsed = parseAgentResponse(raw);
     // 服务端先校验一遍 ops 能否落地，把结果随响应返回，前端直接用新 graph
-    const { graph: newGraph, applied, failed } = applyOps(graph as ViewpointGraph, parsed.ops as GraphOp[]);
+    const { graph: newGraph, applied, failed } = applyOps(
+      graph as ViewpointGraph,
+      parsed.ops as GraphOp[],
+      originalGraph
+    );
 
     return NextResponse.json({
       reply: parsed.reply,

@@ -30,7 +30,7 @@ body {
   100% { transform: translateX(300%); }
 }
 
-/* Excalidraw 样式适配项目：精简 UI、统一配色 */
+/* ── Excalidraw 深度定制：贴合产品、去掉原生痕迹 ── */
 .excalidraw {
   --color-primary: #0066ff;
   --color-primary-darker: #0052cc;
@@ -45,23 +45,41 @@ body {
   --ui-font: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
 }
 
-/* 隐藏不必要功能：主题切换、帮助、导出图片（保留我们自己的导出按钮）、协作 */
-.excalidraw .theme-toggle,
+/* 隐藏主菜单（左上角 Excalidraw logo 菜单）、帮助图标、欢迎屏 */
+.excalidraw .main-menu-trigger,
 .excalidraw .help-icon,
-.excalidraw .dropdown-menu-item:has([data-testid="export-image"]),
-.excalidraw .dropdown-menu-item:has([data-testid="save-to-current-file"]),
-.excalidraw .dropdown-menu-item:has([data-testid="collaboration"]) {
+.excalidraw .welcome-screen-center,
+.excalidraw .layer-ui__wrapper .HelpButton,
+.excalidraw .excalidraw__canvas + .HelpIcon {
   display: none !important;
 }
 
-/* 画布内工具栏圆角统一 */
-.excalidraw .ToolIcon,
-.excalidraw .Island {
-  border-radius: 8px;
+/* 工具栏只留核心工具：隐藏 图片/mermaid(frame)/laser/魔法帧/嵌入帧/锁 */
+.excalidraw .Stack.Stack_vertical[data-testid="toolbar"] .default-sidebar-trigger,
+.excalidraw [data-testid="toolbar-lock"],
+.excalidraw [data-testid="toolbar-laser"],
+.excalidraw [data-testid="toolbar-laserpointer"],
+.excalidraw [data-testid="toolbar-frame"],
+.excalidraw [data-testid="toolbar-magicframe"],
+.excalidraw [data-testid="toolbar-embeddable"] {
+  display: none !important;
 }
 
 /* 底部状态栏简化 */
 .excalidraw .Footer {
   font-size: 11px;
   color: var(--color-gray-50);
+}
+
+/* 工具栏/面板圆角统一，弱化原生的方硬感 */
+.excalidraw .ToolIcon,
+.excalidraw .Island,
+.excalidraw .panelColumn {
+  border-radius: 10px;
+}
+
+/* 选中元素的样式面板配色微调 */
+.excalidraw .Island {
+  box-shadow: 0 2px 10px rgb(0 0 0 / 0.05);
+  border: 1px solid #ecece8;
 }

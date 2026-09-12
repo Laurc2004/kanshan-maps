@@ -12,7 +12,8 @@ export type GraphOp =
   | { op: "set_consensus"; consensus: string[] }
   | { op: "add_consensus"; item: string }
   | { op: "rename_question"; question: string }
-  | { op: "relayout" };
+  | { op: "relayout" }
+  | { op: "reset" };
 
 export type AgentResponse = {
   reply: string; // 给用户看的解释
@@ -32,8 +33,9 @@ graph 结构：{question: string, consensus: string[], viewpoints: [{stance, sum
 - {"op":"add_consensus","item":"..."} 追加一条共识
 - {"op":"rename_question","question":"..."} 改标题
 - {"op":"relayout"} 仅重新布局
-规则：修改必须基于用户要求和现有 graph；不要编造知乎链接；无法做到时在 reply 中说明并给空 ops。`;
-
+- {"op":"reset"} 撤销本条消息里的全部修改，恢复为用户发消息前的原图
+规则：修改必须基于用户要求和现有 graph；index 必须落在现有 viewpoints 范围内，不能凭空引用不存在的立场；不要编造知乎链接；无法做到时在 reply 中说明并给空 ops。`;
+// reset 需要原图：由调用方在操作应用前注入
 export function buildAgentMessages(
   history: { role: string; content: string }[],
   graph: ViewpointGraph,
@@ -71,7 +73,8 @@ export function parseAgentResponse(raw: string): AgentResponse {
 // 把操作序列应用到 graph，返回新 graph + 每条操作的人话描述（失败的操作跳过并说明）
 export function applyOps(
   graph: ViewpointGraph,
-  ops: GraphOp[]
+  ops: GraphOp[],
+  originalGraph?: ViewpointGraph
 ): { graph: ViewpointGraph; applied: string[]; failed: string[] } {
   const g: ViewpointGraph = JSON.parse(JSON.stringify(graph));
   const applied: string[] = [];
@@ -135,6 +138,14 @@ export function applyOps(
           break;
         case "relayout":
           applied.push(`${tag}：重新布局`);
+          break;
+        case "reset":
+          if (!originalGraph) {
+            failed.push(`${tag}：没有可恢复的原图`);
+          } else {
+            Object.assign(g, JSON.parse(JSON.stringify(originalGraph)));
+            applied.push(`${tag}：已恢复为修改前的原图`);
+          }
           break;
         default:
           failed.push(`${tag}：未知操作`);

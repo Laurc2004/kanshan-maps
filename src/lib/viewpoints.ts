@@ -17,7 +17,7 @@ export type ViewpointGraph = {
 // 指令并入 user 消息末尾（zhida-fast 会忽略 system 指令；其他模型同样兼容此格式）
 export const INSTRUCTION = `分析上面这些知乎回答的观点立场。只输出一个 JSON 对象，不要 markdown，不要解释，第一个字符必须是 { 最后一个字符必须是 }。
 格式：{"consensus":["共识要点"],"viewpoints":[{"stance":"2-5字立场标签","summary":"30字内核心观点","evidence":["20字内论据"],"authors":["答主昵称，从输入原样复制"],"sources":["链接，从输入原样复制"]}]}
-viewpoints 2-4 个且必须有区分度；没有共识就给空数组。`;
+viewpoints 2-4 个且必须有区分度（按支持度从高到低排序，最重要的放第一个）；没有共识就给空数组。`;
 
 export function buildExtractMessages(question: string, items: SearchResultItem[]) {
   const material = items
