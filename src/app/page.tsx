@@ -8,6 +8,7 @@ import type { ViewpointGraph } from "@/lib/viewpoints";
 import type { SearchResultItem } from "@/lib/zhihu";
 import AgentPanel from "@/components/AgentPanel";
 import SourcesPanel, { type HotItem } from "@/components/SourcesPanel";
+import { requestClearBoard } from "@/lib/board-actions";
 
 const Excalidraw = dynamic(() => import("@excalidraw/excalidraw").then((m) => m.Excalidraw), {
   ssr: false,
@@ -46,9 +47,7 @@ export default function Home() {
   const [showEngineCfg, setShowEngineCfg] = useState(false);
   const [engine, setEngine] = useState<Engine>({ id: "builtin" });
   const [hotItems, setHotItems] = useState<HotItem[]>([]);
-  const [searchOffset, setSearchOffset] = useState(0);
-  const [searchHasMore, setSearchHasMore] = useState(false);
-  const [loadingMore, setLoadingMore] = useState(false);
+  const [pendingClear, setPendingClear] = useState(false); // 清空画布确认弹窗
   const [me, setMe] = useState<{ loggedIn: boolean; name?: string }>({ loggedIn: false });
   const [followeeCount, setFolloweeCount] = useState(0);
   const [authNotice, setAuthNotice] = useState<string | null>(null);
@@ -281,8 +280,6 @@ export default function Home() {
               streamedItems = data.items ?? [];
               setItems(streamedItems);
             }
-            setSearchOffset(streamedItems.length);
-            setSearchHasMore(false);
             setShowSources(true);
           } else if (event === "graph") {
             // 第二步：图落画板
@@ -332,8 +329,6 @@ export default function Home() {
       if (!res.ok) throw new Error(data.error || "搜索失败");
       if (!data.items?.length) throw new Error("知乎上没有找到相关内容，换个问法试试");
       setItems(data.items);
-      setSearchOffset(data.items.length);
-      setSearchHasMore(Boolean(data.hasMore));
       setShowSources(true);
       setStatus(`找到 ${data.items.length} 篇回答，勾选后点「生成所选」`);
       setTimeout(() => setStatus(null), 5000);
@@ -345,46 +340,22 @@ export default function Home() {
     }
   }, [question, loading]);
 
-  const loadMoreAnswers = useCallback(async () => {
-    if (!question.trim() || loadingMore || !searchHasMore) return;
-    setLoadingMore(true);
-    try {
-      const res = await fetch("/api/search", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question, offset: searchOffset }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "加载失败");
-      const incoming = (data.items ?? []) as SearchResultItem[];
-      setItems((current) => {
-        const seen = new Set(current.map((item) => item.ContentID || item.Url));
-        return [...current, ...incoming.filter((item) => !seen.has(item.ContentID || item.Url))];
-      });
-      setSearchOffset((offset) => offset + incoming.length);
-      setSearchHasMore(Boolean(data.hasMore) && incoming.length > 0);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "加载更多失败");
-    } finally {
-      setLoadingMore(false);
-    }
-  }, [question, loadingMore, searchHasMore, searchOffset]);
-
   const clearBoard = useCallback(() => {
+    const reset = requestClearBoard(true);
+    if (!reset) return;
     apiRef.current?.updateScene({ elements: [] });
     apiRef.current = null;
     pendingRef.current = null;
     graphRef.current = null;
-    setGraph(null);
-    setItems([]);
-    setQuestion("");
-    setStatus(null);
-    setError(null);
-    setGenerating(false);
-    setBoardMounted(false);
-    setSearchOffset(0);
-    setSearchHasMore(false);
-    setRestored(false);
+    setGraph(reset.graph);
+    setItems(reset.items);
+    setQuestion(reset.question);
+    setStatus(reset.status);
+    setError(reset.error);
+    setGenerating(reset.generating);
+    setBoardMounted(reset.boardMounted);
+    setRestored(reset.restored);
+    setPendingClear(false);
     try {
       localStorage.removeItem(BOARD_KEY);
       sessionStorage.removeItem(ELEMENTS_KEY);
@@ -485,7 +456,7 @@ export default function Home() {
               </svg>
             </button>
             <button
-              onClick={clearBoard}
+              onClick={() => setPendingClear(true)}
               disabled={loading || !graph}
               title="清空画布并回到初始状态"
               className="rounded-full border border-gray-200 p-2 text-gray-400 transition hover:border-red-200 hover:bg-red-50 hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-30"
@@ -671,9 +642,6 @@ export default function Home() {
             hotItems={hotItems}
             onPickHot={pickHot}
             onGenerateSelected={generateSelected}
-            onLoadMore={loadMoreAnswers}
-            loadingMore={loadingMore}
-            hasMore={searchHasMore}
             onClose={() => setShowSources(false)}
           />
         ) : (
@@ -862,6 +830,40 @@ export default function Home() {
                 className="rounded-full bg-[#0066ff] px-4 py-1.5 text-xs font-medium text-white transition hover:bg-[#0052cc]"
               >
                 确定生成
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* 清空画布确认弹窗：取消只关闭弹窗，状态原样保留；确认才执行完整清空 */}
+      {pendingClear && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-sm"
+          onClick={() => setPendingClear(false)}
+        >
+          <div
+            className="mx-4 w-full max-w-sm rounded-2xl border border-[#e8e8e3] bg-white p-5 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-3 flex items-center gap-2">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/liukanshan/idle.gif" alt="" className="h-8 w-8" />
+              <h3 className="text-sm font-semibold text-[#1a1a1a]">清空画布</h3>
+            </div>
+            <p className="mb-1 text-xs leading-5 text-gray-600">确定要清空当前画布吗？</p>
+            <p className="mb-4 text-xs leading-5 text-gray-600">画布上的图、素材列表和本地缓存都会被清除，此操作不可撤销。</p>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setPendingClear(false)}
+                className="rounded-full border border-gray-200 px-4 py-1.5 text-xs text-gray-500 transition hover:bg-gray-50"
+              >
+                取消
+              </button>
+              <button
+                onClick={clearBoard}
+                className="rounded-full bg-red-500 px-4 py-1.5 text-xs font-medium text-white transition hover:bg-red-600"
+              >
+                确认清空
               </button>
             </div>
           </div>

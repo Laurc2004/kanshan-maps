@@ -24,11 +24,10 @@ function headers(oauthToken?: string): Record<string, string> {
   return h;
 }
 
-export async function zhihuSearch(query: string, count = 10, offset = 0) {
+export async function zhihuSearch(query: string, count = 10) {
   const params = new URLSearchParams({
     Query: query,
     Count: String(Math.min(Math.max(count, 1), 10)),
-    ...(offset > 0 ? { Offset: String(offset) } : {}),
   });
   const res = await fetch(`${BASE}/api/v1/content/zhihu_search?${params}`, { headers: headers() });
   const json = await res.json();

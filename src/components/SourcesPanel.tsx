@@ -14,9 +14,6 @@ export default function SourcesPanel({
   hotItems,
   onPickHot,
   onGenerateSelected,
-  onLoadMore,
-  loadingMore,
-  hasMore,
   onClose,
 }: {
   items: SearchResultItem[];
@@ -25,9 +22,6 @@ export default function SourcesPanel({
   hotItems: HotItem[];
   onPickHot: (title: string) => void;
   onGenerateSelected: (selected: SearchResultItem[], question: string) => void;
-  onLoadMore: () => void;
-  loadingMore: boolean;
-  hasMore: boolean;
   onClose: () => void;
 }) {
   const showSources = items.length > 0;
@@ -112,10 +106,6 @@ export default function SourcesPanel({
 
       <div
         className="thin-scroll flex-1 overflow-y-auto p-3"
-        onScroll={(e) => {
-          const el = e.currentTarget;
-          if (el.scrollHeight - el.scrollTop - el.clientHeight < 120) onLoadMore();
-        }}
       >
         {showSources && !showHot && items.length > 0 && (
           <p className="mb-2 px-1 text-[10px] leading-4 text-gray-400">
@@ -205,15 +195,6 @@ export default function SourcesPanel({
               </div>
             );
           })}
-        {!showHot && items.length > 0 && (
-          <button
-            onClick={onLoadMore}
-            disabled={loadingMore || !hasMore}
-            className="mb-2 w-full rounded-lg border border-dashed border-gray-200 px-3 py-2 text-xs text-gray-500 transition hover:border-[#0066ff]/50 hover:text-[#0066ff] disabled:cursor-default disabled:text-gray-300"
-          >
-            {loadingMore ? "继续加载中…" : hasMore ? "继续加载更多回答" : "已加载全部回答"}
-          </button>
-        )}
       </div>
     </aside>
   );
