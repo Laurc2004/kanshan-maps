@@ -46,6 +46,7 @@ export interface PresentationSpec {
   density: Density;
   stroke: StrokeStyle;
   hierarchy: HierarchyScale;
+  layout?: LayoutKind;  // optional override for RunPlan.layout
   style?: string; // style id, must not replace palette
 }
 
