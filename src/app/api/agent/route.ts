@@ -1,6 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { buildAgentMessages, parseAgentResponse, applyOps, type GraphOp } from "@/lib/graph-patch";
 import type { ViewpointGraph } from "@/lib/viewpoints";
+import { buildKnowledgeGraphAgentMessages, parseKnowledgeGraphAgentResponse, applyKnowledgeGraphOps, type KnowledgeGraphOp } from "@/lib/harness/patch";
+import type { KnowledgeGraph } from "@/lib/harness/types";
+import { roadmapToKnowledgeGraph } from "@/lib/harness/compat";
+import type { RoadmapGraph } from "@/lib/roadmap";
+
+function isKnowledgeGraph(graph: unknown): graph is KnowledgeGraph {
+  const value = graph as KnowledgeGraph | null;
+  return !!value && typeof value === "object" && Array.isArray(value.nodes) && Array.isArray(value.edges)
+    && Array.isArray(value.groups) && Array.isArray(value.citations) && !!value.presentation;
+}
+
+function isRoadmapGraph(graph: unknown): graph is RoadmapGraph {
+  const value = graph as RoadmapGraph | null;
+  return !!value && value.kind === "roadmap" && typeof value.topic === "string" && Array.isArray(value.stages);
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -8,13 +23,17 @@ export async function POST(req: NextRequest) {
     if (!message || typeof message !== "string") {
       return NextResponse.json({ error: "消息不能为空" }, { status: 400 });
     }
-    if (!graph || !Array.isArray(graph.viewpoints)) {
+    if (!graph || (!Array.isArray(graph.viewpoints) && !isKnowledgeGraph(graph) && !isRoadmapGraph(graph))) {
       return NextResponse.json({ error: "缺少当前图数据，请先生成一张图" }, { status: 400 });
     }
 
-    const messages = buildAgentMessages(history ?? [], graph as ViewpointGraph, message);
+    const unified = isKnowledgeGraph(graph) || isRoadmapGraph(graph);
+    const unifiedGraph = isKnowledgeGraph(graph) ? graph : isRoadmapGraph(graph) ? roadmapToKnowledgeGraph(graph) : null;
+    const messages = unified
+      ? buildKnowledgeGraphAgentMessages(history ?? [], unifiedGraph!, message)
+      : buildAgentMessages(history ?? [], graph as ViewpointGraph, message);
     // 原图快照：reset 操作恢复用（deep copy 在 applyOps 内做）
-    const originalGraph = JSON.parse(JSON.stringify(graph)) as ViewpointGraph;
+    const originalGraph = JSON.parse(JSON.stringify(unifiedGraph ?? graph));
 
     const engineId = engine?.id || "builtin";
     let raw: string;
@@ -37,20 +56,18 @@ export async function POST(req: NextRequest) {
       raw = await chatComplete(cfg, messages);
     }
 
-    const parsed = parseAgentResponse(raw);
-    // 服务端先校验一遍 ops 能否落地，把结果随响应返回，前端直接用新 graph
-    const { graph: newGraph, applied, failed } = applyOps(
-      graph as ViewpointGraph,
-      parsed.ops as GraphOp[],
-      originalGraph
-    );
+    const parsed = unified ? parseKnowledgeGraphAgentResponse(raw) : parseAgentResponse(raw);
+    // Keep all patch validation server-side; the client only receives renderer-ready IR.
+    const result = unified
+      ? applyKnowledgeGraphOps(unifiedGraph!, parsed.ops as KnowledgeGraphOp[], originalGraph)
+      : applyOps(graph as ViewpointGraph, parsed.ops as GraphOp[], originalGraph as ViewpointGraph);
 
     return NextResponse.json({
       reply: parsed.reply,
-      graph: newGraph,
-      applied,
-      failed,
-      changed: applied.length > 0,
+      graph: result.graph,
+      applied: result.applied,
+      failed: result.failed,
+      changed: "changed" in result ? result.changed : result.applied.length > 0,
     });
   } catch (e) {
     console.error("[/api/agent]", e);

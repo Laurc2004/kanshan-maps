@@ -2,6 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { ViewpointGraph } from "@/lib/viewpoints";
+import type { KnowledgeGraph } from "@/lib/harness/types";
+import type { RoadmapGraph } from "@/lib/roadmap";
+
+type AgentGraph = ViewpointGraph | RoadmapGraph | KnowledgeGraph;
 
 export type ChatMsg = {
   role: "user" | "assistant";
@@ -19,10 +23,10 @@ export default function AgentPanel({
   onApply,
   onClose,
 }: {
-  graph: ViewpointGraph | null;
+  graph: AgentGraph | null;
   engine: { id: string; baseURL?: string; apiKey?: string; model?: string };
   busy: boolean; // 外层正在生成图时禁用
-  onApply: (g: ViewpointGraph) => void;
+  onApply: (g: AgentGraph) => void;
   onClose: () => void;
 }) {
   const [messages, setMessages] = useState<ChatMsg[]>([]);
@@ -30,7 +34,7 @@ export default function AgentPanel({
   const [thinking, setThinking] = useState(false);
   const historyRef = useRef<{ role: string; content: string }[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
-  const graphRef = useRef<ViewpointGraph | null>(null);
+  const graphRef = useRef<AgentGraph | null>(null);
   graphRef.current = graph;
 
   useEffect(() => {

@@ -396,12 +396,14 @@ export default function Home() {
   // Agent 对话修改后的 graph 回灌画板（按当前图类型选布局器）
   const applyAgentGraph = useCallback(
     (g: GraphState) => {
+      const nextMode: Mode = "stages" in g ? "roadmap" : "viewpoint";
       setGraph(g);
       graphRef.current = g;
-      renderGraph(g, undefined, graphMode);
-      persistBoard(g, graphMode, question);
+      setGraphMode(nextMode);
+      renderGraph(g, undefined, nextMode);
+      persistBoard(g, nextMode, "question" in g ? g.question : "nodes" in g ? g.title : g.topic);
     },
-    [renderGraph, graphMode, question, persistBoard]
+    [renderGraph, persistBoard]
   );
 
   return (
@@ -788,7 +790,7 @@ export default function Home() {
         </div>
 
         {showAgent && (
-          <AgentPanel graph={graph && "question" in graph ? graph : null} engine={engine} busy={loading} onApply={applyAgentGraph} onClose={() => setShowAgent(false)} />
+          <AgentPanel graph={graph} engine={engine} busy={loading} onApply={applyAgentGraph} onClose={() => setShowAgent(false)} />
         )}
         {!showAgent && (
           <button
