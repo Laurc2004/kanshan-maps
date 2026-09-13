@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
   }
 
   const appId = process.env.ZHIHU_APP_ID;
-  const appKey = process.env.ZHIHU_APP_KEY;
+  const appKey = process.env.ZHIHU_OAUTH_APP_KEY;
   const redirectUri = process.env.OAUTH_REDIRECT_URI;
   if (!appId || !appKey || !redirectUri) {
     home.searchParams.set("auth_error", "server_not_configured");
@@ -29,6 +29,8 @@ export async function GET(req: NextRequest) {
 
   try {
     // 表单字段名是 code 不是 authorization_code（官方文档明确的坑）
+    // ZHIHU_TOKEN_URL 仅为可测试性覆盖，默认官方端点
+    const tokenUrl = process.env.ZHIHU_TOKEN_URL ?? "https://openapi.zhihu.com/access_token";
     const body = new URLSearchParams({
       app_id: appId,
       app_key: appKey,
@@ -36,7 +38,7 @@ export async function GET(req: NextRequest) {
       redirect_uri: redirectUri,
       code,
     });
-    const tokenRes = await fetch("https://openapi.zhihu.com/access_token", {
+    const tokenRes = await fetch(tokenUrl, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body,

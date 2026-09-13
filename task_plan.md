@@ -132,12 +132,13 @@
 - [x] T8 实施：跨图类型 Agent Patch；提交 `22ea2a5`，89 项 Harness 测试通过
 - [x] T9 实施：智能编排 UI 和混合来源；提交 `a9009dd`，Harness 与组件测试通过
 - [x] T10 实施：全链路验证、推送并部署生产；`164a516` 已推送，生产部署 `dpl_9EqqhGqTSJfANxtr6nQ8LEQp1kK` READY
-- [ ] T11 实施：知乎 Hackathon OAuth 登录接入
-  - 下载并核验用户指定的 Hackathon Skill；若压缩包无法自动提取，记录实际错误并改用安全的本地解压/官方文档路径
-  - 使用 App ID 配置 OAuth；App Key 只通过本地 `.env`/Vercel Sensitive Environment Variable 注入，不写入代码、规划文件、日志或提交
-  - 按 Skill 要求完成回调 URI、state/CSRF、授权码换 Token、会话 Cookie、登录态查询和退出登录
-  - 在固定生产域名上完成 OAuth 回调验证；没有真实凭证联调证据前保持 `in_progress`
-  - 增加未配置凭证、state 不匹配、缺少授权码、Token 交换失败和成功登录的测试
+- [ ] T11 实施：知乎 Hackathon OAuth 登录接入 — status: in_progress（2026-09-13 开始）
+  - [x] 下载并核验用户指定的 Hackathon Skill：官方 URL 包与 Downloads v260815 包 diff 确认后者为更新版（多 deployment-credentials.md + 凭证命名规范），以 v260815 为权威，存档 docs/zhihu-skill/zhihu-hackathon/
+  - [ ] 凭证命名对齐 Skill 规范：ZHIHU_APP_KEY → ZHIHU_OAUTH_APP_KEY（代码+.env.example）；App ID 只进 ZHIHU_APP_ID；App Key 只通过本地 .env / Vercel Sensitive 注入，不写入代码、规划文件、日志或提交
+  - [ ] 本地 .env 填 ZHIHU_APP_ID=436 / ZHIHU_OAUTH_APP_KEY / OAUTH_REDIRECT_URI=https://kanshan-maps.vercel.app/api/auth/callback
+  - [ ] Vercel 环境变量：ZHIHU_APP_ID + OAUTH_REDIRECT_URI（普通）+ ZHIHU_OAUTH_APP_KEY（Encrypted，prod/preview/dev）
+  - [ ] 增加测试：未配置凭证、state 不匹配、缺少授权码、Token 交换失败、成功登录
+  - [ ] 部署后在 https://kanshan-maps.vercel.app 完成 OAuth 回调验证（授权确认页须用户本人点击）；没有真实凭证联调证据前保持 in_progress
 
 ## Errors Encountered
 | Error | Attempt | Resolution |
