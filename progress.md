@@ -1,4 +1,9 @@
-# Progress Log — kanshan-maps
+## 2026-09-13：详细技术方案
+
+- 已写入 `docs/2026-09-13-detailed-technical-implementation-plan.md`。
+- 文档覆盖双模式 Harness、来源预处理、模型调用、知乎个性化、Agent 2.0、原子 patch、预览确认、graph version、局部渲染、测试和分阶段实施。
+- 本轮只完成方案文档，没有修改业务代码。
+
 
 ## Session 8 — 2026-09-12（Phase 10: Harness 架构设计）— in_progress
 - 用户批准总体方向：Intent → Source → Synthesis → Layout → Style → Validate → Render

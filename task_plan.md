@@ -183,8 +183,20 @@
 - [x] G3 布局紧凑化：radial-map 半径按卡片弧长贴合（周长容纳 n 卡）；concept-map 默认 cluster-board 分簇/紧凑两列；evidence-tree 补右侧双列显式分支；planner concept-map→cluster-board；synthesis prompt 所有任务强制 2-4 主题分组+标题直接回答问题
 - [x] G4 验证：E2E legacy 路线图 0%→30%/27% 有内容、观点图回归正常；全量测试（layouts 15/15、planner、excalidraw-layout 回归 1/1）、tsc/lint/build 全绿；提交 27e476d 部署生产 Ready，生产 roadmap API 出图正常
 
+## Phase 16: 详细技术实施方案 — status: complete
+- [x] 将双模式 Harness、模型策略、知乎个性化、Agent 2.0 和局部重渲染拆成可执行技术阶段
+- [x] 明确类型、API、缓存隔离、错误结构、测试和 E2E 验收标准
+- [x] 方案文档：`docs/2026-09-13-detailed-technical-implementation-plan.md`
+
+## Phase 15: 产品决策与 Agent 优化方案 — status: complete
+- [x] 梳理并记录产品收缩方向：保留观点对照与学习路线，Harness 下沉为底层架构
+- [x] 记录模型策略：先优化输入、调用次数和校验，再用真实样例对测模型
+- [x] 记录知乎个性化方向：收藏夹到学习路线、关注答主对照、我的学习地图
+- [x] 诊断看山助手：意图路由、双协议、过宽 patch、部分提交、无预览、全图重排和版本覆盖风险
+- [x] 提出 Agent 2.0：apply/preview/answer/clarify、语义化变化、风险分级、原子提交、局部重渲染
+- [x] 方案文档：`docs/2026-09-13-product-decision-and-agent-improvement-plan.md`
+
 ## Errors Encountered
-|-------|---------|------------|
 | Excalidraw updateScene 被丢弃（setState on unmounted） | 1 | 回调后 setTimeout 300ms 再注入（已修） |
 | Excalidraw 容器高度失控（canvas 顶到 2^25） | 1 | 显式像素高度 + contain:size（已修） |
 | Excalidraw updateScene 静默丢失（重构后复发） | 2 | 根因：excalidrawAPI 回调先于内部 _App 挂载，固定 300ms 延迟不可靠 → 重试轮询（250ms×40）直到 getSceneElements>0 |
