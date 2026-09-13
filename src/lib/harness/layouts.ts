@@ -10,7 +10,8 @@ const TEXT_W = CARD_W - 40;
 const LINE_HEIGHT = 1.25;
 
 function safeId(value: string): string {
-  return value.replace(/[^a-zA-Z0-9_-]/g, "-").slice(0, 48) || "node";
+  const sanitized = value.replace(/[^a-zA-Z0-9_-]/g, "-").slice(0, 48) || "node";
+  return `${sanitized}-${hash(value).toString(16).padStart(8, "0")}`;
 }
 
 function widthOf(text: string, fontSize: number): number {
@@ -37,7 +38,7 @@ function base(id: string, type: string, box: Box): SceneElement {
 
 function hash(value: string): number {
   let result = 2166136261;
-  for (const char of value) result = Math.imul(result ^ char.charCodeAt(0), 16777619);
+  for (let i = 0; i < value.length; i++) result = Math.imul(result ^ value.charCodeAt(i), 16777619);
   return (result >>> 0) || 1;
 }
 
@@ -107,5 +108,6 @@ export const layoutRegistry: Partial<Record<LayoutKind, (graph: KnowledgeGraph) 
 
 export function knowledgeGraphToScene(graph: KnowledgeGraph): SceneElement[] {
   const requested = graph.presentation.layout ?? graph.kind;
+  // Task 7 adds the remaining templates; valid unsupported layouts explicitly degrade to radial-map.
   return (layoutRegistry[requested] ?? radialMap)(graph);
 }

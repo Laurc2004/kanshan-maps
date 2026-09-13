@@ -115,6 +115,7 @@ export interface KnowledgeNode {
   group?: string;
   citations: string[];
   emphasis?: "low" | "normal" | "high";
+  metadata?: Record<string, unknown>;
 }
 
 export interface KnowledgeEdge {
@@ -139,6 +140,7 @@ export interface KnowledgeGraph {
   groups: KnowledgeGroup[];
   citations: Citation[];
   presentation: PresentationSpec;
+  metadata?: Record<string, unknown>;
 }
 
 export interface PlanInput {

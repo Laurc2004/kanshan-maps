@@ -20,6 +20,44 @@ test("converts roadmap graph to unified IR and back", () => {
   assert.deepEqual(knowledgeGraphToRoadmap(graph), legacy);
 });
 
+test("viewpoint roundtrip survives JSON serialization without caps or field loss", () => {
+  const legacy = {
+    question: "Many opinions",
+    consensus: Array.from({ length: 11 }, (_, i) => `Consensus ${i}`),
+    viewpoints: Array.from({ length: 12 }, (_, i) => ({
+      stance: `Stance ${i}`,
+      summary: `Summary ${i}`,
+      evidence: [`Evidence ${i}`, `Evidence ${i}-b`],
+      authors: [`Author ${i}`],
+      sources: [`https://example.test/view/${i}`],
+    })),
+    style: "bold" as const,
+  };
+  const serialized = JSON.parse(JSON.stringify(viewpointToKnowledgeGraph(legacy))) as KnowledgeGraph;
+  assert.equal(serialized.nodes.filter((node) => node.group === "viewpoints").length, 12);
+  assert.equal(serialized.nodes.filter((node) => node.group === "consensus").length, 11);
+  assert.deepEqual(knowledgeGraphToViewpoint(serialized), legacy);
+});
+
+test("roadmap roundtrip survives JSON serialization without stage or item caps", () => {
+  const legacy = {
+    kind: "roadmap" as const,
+    topic: "Large roadmap",
+    stages: Array.from({ length: 10 }, (_, stage) => ({
+      title: `Stage ${stage}`,
+      items: Array.from({ length: 9 }, (_, item) => ({
+        topic: `Topic ${stage}-${item}`,
+        detail: `Detail ${stage}-${item}`,
+        source: `https://example.test/${stage}/${item}`,
+      })),
+    })),
+  };
+  const serialized = JSON.parse(JSON.stringify(roadmapToKnowledgeGraph(legacy))) as KnowledgeGraph;
+  assert.equal(serialized.groups.length, 10);
+  assert.equal(serialized.nodes.length, 90);
+  assert.deepEqual(knowledgeGraphToRoadmap(serialized), legacy);
+});
+
 test("compatibility accepts a graph already in unified IR", () => {
   const graph: KnowledgeGraph = { kind: "timeline", title: "History", summary: "", nodes: [], edges: [], groups: [], citations: [], presentation: { layout: "timeline", palette: "zhihu-blue", density: "comfortable", stroke: "clean", hierarchy: { title: 1, keyFinding: 1, evidence: 1 } } };
   assert.equal(viewpointToKnowledgeGraph(graph), graph);

@@ -46,3 +46,17 @@ test("timeline arrows connect nodes in chronological left-to-right order", () =>
   assert.equal(arrows.length, 5);
   assert.ok(arrows.every((arrow, i) => arrow.width > 0 && arrow.startNodeId === `n${i}` && arrow.endNodeId === `n${i + 1}`));
 });
+
+test("node IDs remain unique for distinct non-BMP source IDs", () => {
+  const ids = ["😀", "😁"];
+  const scene = knowledgeGraphToScene({ ...graph("debate-grid"), nodes: ids.map((id) => ({ id, label: id, description: "node", citations: [] })) });
+  const elementIds = scene.map((element) => element.id as string);
+  assert.equal(new Set(elementIds).size, elementIds.length);
+});
+
+test("node IDs remain unique for sanitized and truncated source IDs", () => {
+  const ids = ["a/b", "a?b", "a\\\\b", "x".repeat(90), "x".repeat(89) + "y"];
+  const scene = knowledgeGraphToScene({ ...graph("debate-grid"), nodes: ids.map((id) => ({ id, label: id, description: "node", citations: [] })) });
+  const elementIds = scene.map((element) => element.id as string);
+  assert.equal(new Set(elementIds).size, elementIds.length);
+});
