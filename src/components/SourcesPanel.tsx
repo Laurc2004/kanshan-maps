@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { SearchResultItem } from "@/lib/zhihu";
 import type { ViewpointGraph } from "@/lib/viewpoints";
+import type { SourceDocument } from "@/lib/harness/types";
 
 export type HotItem = { Title: string; Url: string; ThumbnailUrl?: string; Summary?: string };
 
@@ -11,6 +12,7 @@ export default function SourcesPanel({
   items,
   graph,
   graphMode,
+  documents,
   hotItems,
   onPickHot,
   onGenerateSelected,
@@ -19,6 +21,7 @@ export default function SourcesPanel({
   items: SearchResultItem[];
   graph: ViewpointGraph | null;
   graphMode: "viewpoint" | "roadmap";
+  documents: SourceDocument[];
   hotItems: HotItem[];
   onPickHot: (title: string) => void;
   onGenerateSelected: (selected: SearchResultItem[], question: string) => void;
@@ -39,6 +42,7 @@ export default function SourcesPanel({
 
   const showHot = !showSources || tab === "hot";
   const selectedItems = items.filter((it) => selected.has(it.ContentID || it.Url));
+  const mixedLabels = [...new Set(documents.map((doc) => doc.sourceType))];
 
   const toggle = (key: string) => {
     setSelected((prev) => {
@@ -109,7 +113,7 @@ export default function SourcesPanel({
       >
         {showSources && !showHot && items.length > 0 && (
           <p className="mb-2 px-1 text-[10px] leading-4 text-gray-400">
-            勾选多篇回答后点「生成所选」，可只炼你自己挑的内容；生成后仍可切回继续浏览
+            {mixedLabels.length > 1 ? `当前包含 ${mixedLabels.length} 类来源；` : ""}勾选多篇回答后点「生成所选」，可只炼你自己挑的内容；生成后仍可切回继续浏览
           </p>
         )}
         {showHot && hotItems.length === 0 && (

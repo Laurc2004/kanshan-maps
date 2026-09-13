@@ -7,10 +7,12 @@ import "@excalidraw/excalidraw/index.css";
 import type { ViewpointGraph } from "@/lib/viewpoints";
 import type { RoadmapGraph } from "@/lib/roadmap";
 import type { KnowledgeGraph } from "@/lib/harness/types";
+import type { HarnessEventType, SourceDocument } from "@/lib/harness/types";
 import type { SearchResultItem } from "@/lib/zhihu";
 import AgentPanel from "@/components/AgentPanel";
 import SourcesPanel, { type HotItem } from "@/components/SourcesPanel";
 import { requestClearBoard } from "@/lib/board-actions";
+import HarnessStatus from "@/components/HarnessStatus";
 
 const Excalidraw = dynamic(() => import("@excalidraw/excalidraw").then((m) => m.Excalidraw), {
   ssr: false,
@@ -23,7 +25,7 @@ const Excalidraw = dynamic(() => import("@excalidraw/excalidraw").then((m) => m.
 });
 
 type Engine = { id: string; baseURL?: string; apiKey?: string; model?: string };
-type Mode = "viewpoint" | "roadmap";
+type Mode = "auto" | "viewpoint" | "roadmap";
 
 // 本地缓存：graph 结构化数据（localStorage），画板元素序列化体积大放 sessionStorage
 const BOARD_KEY = "kanshan.board.v1";
@@ -39,13 +41,15 @@ type BoardCache = {
 
 export default function Home() {
   const [question, setQuestion] = useState("");
-  const [mode, setMode] = useState<Mode>("viewpoint");
+  const [mode, setMode] = useState<Mode>("auto");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [graph, setGraph] = useState<GraphState | null>(null);
   const [graphMode, setGraphMode] = useState<Mode>("viewpoint"); // 当前画板上的图类型
   const [items, setItems] = useState<SearchResultItem[]>([]);
+  const [sourceDocuments, setSourceDocuments] = useState<SourceDocument[]>([]);
+  const [harnessEvent, setHarnessEvent] = useState<HarnessEventType | null>(null);
   const [showSources, setShowSources] = useState(true);
   const [showEngineCfg, setShowEngineCfg] = useState(false);
   const [engine, setEngine] = useState<Engine>({ id: "builtin" });
@@ -247,6 +251,8 @@ export default function Home() {
       apiRef.current = null; // 断开旧 Excalidraw 实例
       setError(null);
       setStatus("正在连接看山工作台…");
+      setHarnessEvent(mode === "auto" ? "planning" : null);
+      setSourceDocuments([]);
       try {
         // SSE 流式：素材先到（SourcesPanel 立刻有内容），图后到（画板落笔）
         // picked：用户自选回答直传，跳过服务端搜索
@@ -279,18 +285,36 @@ export default function Home() {
           const data = JSON.parse(dataMatch[1]);
           if (event === "status") {
             setStatus(data.text);
+          } else if (["planning", "searching", "synthesizing", "laying_out", "validating"].includes(event)) {
+            setHarnessEvent(event as HarnessEventType);
           } else if (event === "sources") {
             // 自选生成时保留完整搜索结果，避免只剩被选中的几篇。
             if (!picked) {
-              streamedItems = data.items ?? [];
+              const received = data.items ?? [];
+              streamedItems = received.map((item: Record<string, unknown>) =>
+                item.sourceType
+                  ? {
+                      Title: String(item.title ?? "（无标题）"),
+                      ContentType: String((item.metadata as Record<string, unknown> | undefined)?.contentType ?? ""),
+                      ContentID: String(item.id ?? item.url ?? ""),
+                      ContentText: String(item.text ?? ""),
+                      Url: String(item.url ?? ""),
+                      VoteUpCount: Number(item.score ?? 0),
+                      AuthorName: String(item.author ?? ""),
+                    }
+                  : item
+              ) as SearchResultItem[];
               setItems(streamedItems);
             }
+            setSourceDocuments((data.documents ?? data.items ?? []) as SourceDocument[]);
+            setHarnessEvent("sources");
             setShowSources(true);
           } else if (event === "graph") {
             // 第二步：图落画板
             setGraph(data.graph);
             graphRef.current = data.graph;
             setGraphMode(data.mode === "roadmap" ? "roadmap" : "viewpoint");
+            setHarnessEvent("graph");
             setBoardMounted(true);
             await renderGraph(data.graph, undefined, data.mode);
             persistBoard(data.graph, data.mode === "roadmap" ? "roadmap" : "viewpoint", question, streamedItems);
@@ -303,6 +327,7 @@ export default function Home() {
             );
             setTimeout(() => setStatus(null), 4000);
           } else if (event === "error") {
+            setHarnessEvent("error");
             throw new Error(data.error || "生成失败");
           }
         }
@@ -421,6 +446,7 @@ export default function Home() {
             <div className="flex rounded-full border border-gray-200 bg-[#fafaf7] p-0.5 text-xs">
               {(
                 [
+                  { id: "auto", label: "智能编排" },
                   { id: "viewpoint", label: "观点对照" },
                   { id: "roadmap", label: "学习路线" },
                 ] as const
@@ -529,7 +555,7 @@ export default function Home() {
             onChange={(e) => setQuestion(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && generate()}
             placeholder={
-              mode === "viewpoint" ? "输入有争议的问题，如：年轻人该不该买房" : "输入领域关键词，如：前端入门"
+              mode === "viewpoint" ? "输入有争议的问题，如：年轻人该不该买房" : mode === "roadmap" ? "输入领域关键词，如：前端入门" : "输入一个问题，智能选择资料与图形"
             }
             className="min-w-0 flex-1 rounded-full border border-gray-200 bg-[#fafaf7] py-2 pl-4 pr-3 text-sm outline-none transition focus:border-[#0066ff]/60 focus:bg-white focus:shadow-sm"
             disabled={loading}
@@ -623,6 +649,7 @@ export default function Home() {
         </div>
       )}
 
+      <HarnessStatus event={harnessEvent} documents={sourceDocuments} />
       {/* 状态条 */}
       {(status || error || restored) && (
         <div
@@ -645,7 +672,8 @@ export default function Home() {
           <SourcesPanel
             items={items}
             graph={graph && "question" in graph ? graph : null}
-            graphMode={graphMode}
+            graphMode={graphMode === "roadmap" ? "roadmap" : "viewpoint"}
+            documents={sourceDocuments}
             hotItems={hotItems}
             onPickHot={pickHot}
             onGenerateSelected={generateSelected}
