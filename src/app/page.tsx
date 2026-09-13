@@ -500,12 +500,39 @@ export default function Home() {
   }, [pendingHot]);
 
   // Agent 对话修改后的 graph 回灌画板（按当前图类型选布局器）
+  // appliedLabels 用于局部渲染决策：纯文字/强调类修改保留用户坐标，结构类才整体重排
   const applyAgentGraph = useCallback(
-    (g: GraphState) => {
+    (g: GraphState, appliedLabels?: string[]) => {
       const nextMode: Mode = "stages" in g ? "roadmap" : "compare";
       setGraph(g);
       graphRef.current = g;
       setGraphMode(nextMode);
+      const labels = (appliedLabels ?? []).join(" ");
+      // 局部安全：标题/强调/风格/精简描述 不影响布局 → 保留用户手动排版
+      // 结构变化（删除/合并/移动/重排）→ 全量重排防重叠
+      const structural =
+        /删除|合并|移动|移出|重排|重新布局/.test(labels) ||
+        appliedLabels === undefined; // 未知操作类型时保守全量重排
+      if (!structural && apiRef.current) {
+        // 只更新文字/样式：用同一布局器重新生成元素，但保留旧坐标
+        (async () => {
+          const layout = await import("@/lib/excalidraw-layout");
+          const fresh = (
+            nextMode === "roadmap" && "question" in g
+              ? layout.graphToScene(g, followeesRef.current)
+              : layout.adaptiveGraphToScene(g, followeesRef.current)
+          ) as { id?: string; x?: number; y?: number }[];
+          const old = (apiRef.current?.getSceneElements() ?? []) as unknown as { id?: string; x?: number; y?: number }[];
+          const oldPos = new Map(old.map((el) => [el.id, { x: el.x, y: el.y }]));
+          const merged = fresh.map((el) => {
+            const pos = el.id ? oldPos.get(el.id) : undefined;
+            return pos ? { ...el, x: pos.x, y: pos.y } : el;
+          });
+          apiRef.current?.updateScene({ elements: merged as never });
+          persistBoard(g, nextMode, "question" in g ? g.question : "nodes" in g ? g.title : g.topic);
+        })();
+        return;
+      }
       renderGraph(g, undefined, nextMode);
       persistBoard(g, nextMode, "question" in g ? g.question : "nodes" in g ? g.title : g.topic);
     },

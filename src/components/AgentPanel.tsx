@@ -44,7 +44,7 @@ export default function AgentPanel({
   graph: AgentGraph | null;
   engine: { id: string; baseURL?: string; apiKey?: string; model?: string };
   busy: boolean; // 外层正在生成图时禁用
-  onApply: (g: AgentGraph) => void;
+  onApply: (g: AgentGraph, appliedLabels?: string[]) => void;
   onClose: () => void;
   progress?: HarnessProgress | null;
 }) {
@@ -101,7 +101,7 @@ export default function AgentPanel({
           ts: Date.now(),
         },
       ]);
-      if (data.changed) onApply(data.graph);
+      if (data.changed) onApply(data.graph, Array.isArray(data.applied) ? data.applied : []);
     } catch (e) {
       setMessages((m) => [
         ...m,
@@ -135,7 +135,7 @@ export default function AgentPanel({
           { role: "assistant", content: data.reply, detail: data.applied, failed: data.failed, ts: Date.now() },
         ];
       });
-      if (data.changed) onApply(data.graph);
+      if (data.changed) onApply(data.graph, Array.isArray(data.applied) ? data.applied : []);
     } catch (e) {
       setMessages((m) => [
         ...m,
