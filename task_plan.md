@@ -203,3 +203,11 @@
 | Playwright chromium 版本不匹配 | 1 | npx playwright install chromium 重装 |
 | vision_analyze 400（custom provider 不支持非流式图片请求） | 1 | 改用 Playwright 程序化 UI 检查（溢出/图片/布局/背景色断言） |
 | curl localhost 打到旧 dev server | 1 | 旧进程占 3000，新 server 在 3001；以 process log 为准 |
+
+## Phase 17: 双模式 Harness + Agent 2.0 + 个性化实施 — status: complete
+- [x] A 双模式收缩（compare/roadmap，隐藏 auto）
+- [x] B Agent 2.0（语义协议 + 原子提交 + 风险分级 + 预览确认）
+- [x] C 局部重渲染（保留用户坐标）
+- [x] D 收藏夹→学习路线（favlists/favlist-contents API + 前端入口）
+- [x] A2 来源预处理（相关性过滤 + 转载去重）
+- [x] E 全量验证（129 tests pass / lint clean / build pass / E2E 冒烟通过）
