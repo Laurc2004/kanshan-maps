@@ -12,6 +12,9 @@ export type ChatMsg = {
   content: string;
   detail?: string[]; // 应用成功的操作描述
   failed?: string[];
+  questions?: string[]; // clarify 追问
+  // preview：待用户确认的结构修改
+  preview?: { planId: string; confirmation: string };
   ts: number;
 };
 
@@ -86,7 +89,17 @@ export default function AgentPanel({
       historyRef.current.push({ role: "assistant", content: data.reply });
       setMessages((m) => [
         ...m,
-        { role: "assistant", content: data.reply, detail: data.applied, failed: data.failed, ts: Date.now() },
+        {
+          role: "assistant",
+          content: data.reply,
+          detail: data.applied,
+          failed: data.failed,
+          questions: data.questions,
+          preview: data.decisionType === "preview" && data.planId
+            ? { planId: data.planId, confirmation: data.confirmation ?? "确认执行这组修改吗？" }
+            : undefined,
+          ts: Date.now(),
+        },
       ]);
       if (data.changed) onApply(data.graph);
     } catch (e) {
@@ -99,7 +112,47 @@ export default function AgentPanel({
     }
   };
 
-  const suggestions = ["把第一个立场标为重点", "共识再精简一点", "标题改成更抓眼球的", "删掉最弱的那个立场"];
+  const suggestions = ["把第一个立场标为重点", "共识再精简一点", "标题改成更抓眼球的", "这张图的核心分歧是什么"];
+
+  // 确认执行 preview 中的结构修改
+  const confirmPreview = async (planId: string, msgIndex: number) => {
+    const g = graphRef.current;
+    if (!g || thinking) return;
+    setThinking(true);
+    try {
+      const res = await fetch("/api/agent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "commit", planId, graph: g, engine }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "执行失败");
+      setMessages((m) => {
+        const next = [...m];
+        next[msgIndex] = { ...next[msgIndex], preview: undefined };
+        return [
+          ...next,
+          { role: "assistant", content: data.reply, detail: data.applied, failed: data.failed, ts: Date.now() },
+        ];
+      });
+      if (data.changed) onApply(data.graph);
+    } catch (e) {
+      setMessages((m) => [
+        ...m,
+        { role: "assistant", content: e instanceof Error ? e.message : "执行失败，请重试", ts: Date.now() },
+      ]);
+    } finally {
+      setThinking(false);
+    }
+  };
+
+  const cancelPreview = (msgIndex: number) => {
+    setMessages((m) => {
+      const next = [...m];
+      next[msgIndex] = { ...next[msgIndex], preview: undefined };
+      return next;
+    });
+  };
 
   return (
     <aside className="flex h-full w-80 flex-col border-l border-[#e8e8e3] bg-white">
@@ -196,6 +249,33 @@ export default function AgentPanel({
               }`}
             >
               <p>{m.content}</p>
+              {m.questions && m.questions.length > 0 && (
+                <ul className="mt-1.5 space-y-1 border-t border-black/5 pt-1.5 text-[11px] text-gray-600">
+                  {m.questions.map((q, j) => (
+                    <li key={j}>🤔 {q}</li>
+                  ))}
+                </ul>
+              )}
+              {m.preview && (
+                <div className="mt-2 rounded-xl border border-amber-200 bg-amber-50 p-2.5">
+                  <p className="mb-2 text-[11px] leading-4 text-amber-800">{m.preview.confirmation}</p>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => confirmPreview(m.preview!.planId, i)}
+                      disabled={thinking}
+                      className="rounded-full bg-[#0066ff] px-3 py-1 text-[11px] font-medium text-white transition hover:bg-[#0052cc] disabled:opacity-40"
+                    >
+                      确认执行
+                    </button>
+                    <button
+                      onClick={() => cancelPreview(i)}
+                      className="rounded-full border border-gray-200 bg-white px-3 py-1 text-[11px] text-gray-500 transition hover:bg-gray-50"
+                    >
+                      取消
+                    </button>
+                  </div>
+                </div>
+              )}
               {m.detail && m.detail.length > 0 && (
                 <ul className="mt-1.5 space-y-0.5 border-t border-black/5 pt-1.5 text-[10px] text-gray-500">
                   {m.detail.map((d, j) => (
