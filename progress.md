@@ -189,3 +189,10 @@
 - 验证：npx tsc --noEmit 0 错；node --test 全量 152 tests / 146 pass / 0 fail / 6 skip（新增 summary 思维导图布局 + zhihu-url 4 项）；npm run lint 0 error（4 warning 均为既有 docs/与 router.ts ctx 未用）；npm run build 16 路由全过；本地 next start 3218 首页 200；URL 分支冒烟：假文章 ID → 友好错误事件「知乎返回 403，暂时读不了这个链接」
 - 外部限制（如实记录）：知乎 WAF 对服务器端直抓内容页一律 403（curl 直测同样 403，zhuanlan 与 api/v4 都被拦）。链接解析/summary 管线代码与离线测试就绪；生产可用性取决于能否经官方 API 或带登录态环境取正文
 - 终端探测命令两次被审批拦截，未重试；生产部署与提交等用户验收后进行
+
+## Session 20 续 — 2026-09-14（域名切换 + Phase 20 上线）— complete
+- 域名 kanshan.space：本地 .env、Vercel 三环境 OAUTH_REDIRECT_URI（remove+add 重置）、README 全部切换；旧域 kanshan-maps.vercel.app 仍 200（Vercel 自动 alias 保留）
+- 提交 76cbb8c（17 文件，+571/-251）推送 origin/phase18-release
+- 生产部署：dpl → kanshan-maps-7h5hcc61p-liurc2004.vercel.app readyState READY
+- 生产验收：kanshan.space 200 + 标题正确；/api/auth/login 307 → authorize 且 redirect_uri 已是 kanshan.space/api/auth/callback（与知乎活动页登记一致）；/api/auth/me 200；热榜 API 正常返回；URL 直达分支在生产生效（假 ID → 友好 403 错误事件，符合预期）
+- 注意：本轮 OAuth 环境变量重置后，真实登录联调需用户在新域名点一次知乎授权确认闭环
