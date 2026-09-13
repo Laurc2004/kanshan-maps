@@ -141,6 +141,42 @@ export default function Home() {
       .catch(() => {});
   }, [me.loggedIn]);
 
+  // 收藏夹（个人学习路线入口）：登录后拉取，roadmap 模式下展示
+  const [favlists, setFavlists] = useState<{ urlToken: number; title: string; description: string }[]>([]);
+  const [favlistLoading, setFavlistLoading] = useState(false);
+  // 收藏夹生成的待处理素材（state 落定后由 generate 消费）
+  const [pendingItems, setPendingItems] = useState<SearchResultItem[] | null>(null);
+  useEffect(() => {
+    if (!me.loggedIn) return;
+    fetch("/api/me/favlists")
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((d) => setFavlists(d.items ?? []))
+      .catch(() => {});
+  }, [me.loggedIn]);
+
+  // 用收藏夹内容生成学习路线：素材 = 收藏夹内的回答/文章
+  const generateFromFavlist = useCallback(
+    async (urlToken: number, title: string) => {
+      if (favlistLoading || loading) return;
+      setFavlistLoading(true);
+      setError(null);
+      try {
+        const r = await fetch(`/api/me/favlist-contents?urlToken=${urlToken}`);
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error || "收藏夹内容获取失败");
+        const items = (d.items ?? []) as SearchResultItem[];
+        if (items.length === 0) throw new Error("这个收藏夹里没有可用的文字内容（回答/文章）");
+        setQuestion(`收藏夹「${title}」的学习路线`);
+        setMode("roadmap");
+        setPendingItems(items); // generate effect 会在 question/mode 落定后消费
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "收藏夹读取失败");
+      } finally {
+        setFavlistLoading(false);
+      }
+    },
+    [favlistLoading, loading]
+  );
   // 稳定引用：excalidrawAPI 回调不随 state 变化重建（避免重复挂载双实例）
   const onApiReady = useCallback((api: ExcalidrawImperativeAPI) => {
     apiRef.current = api;
@@ -424,6 +460,18 @@ export default function Home() {
     },
     [question, loading, engine, mode, renderGraph, persistBoard]
   );
+
+  // 收藏夹生成：question/mode/pendingItems 落定后自动触发
+  useEffect(() => {
+    if (!pendingItems || loading) return;
+    const items = pendingItems;
+    // 异步消费避免 effect 内同步 setState 级联渲染
+    const t = setTimeout(() => {
+      setPendingItems(null);
+      generate(items);
+    }, 0);
+    return () => clearTimeout(t);
+  }, [pendingItems, question, mode, loading, generate]);
 
   // 只找回答不生成（自选素材流程第一步）：独立 searching 态，画板和生成按钮保持不变
   const findAnswers = useCallback(async () => {
@@ -718,6 +766,26 @@ export default function Home() {
       {/* OAuth 回调错误提示 */}
       {authNotice && (
         <div className="shrink-0 bg-amber-50 px-5 py-1.5 text-xs text-amber-700">{authNotice}</div>
+      )}
+
+      {/* 收藏夹学习路线入口：登录 + roadmap 模式时展示 */}
+      {me.loggedIn && mode === "roadmap" && favlists.length > 0 && (
+        <div className="shrink-0 border-b border-[#e8e8e3] bg-[#f8f9ff] px-5 py-2">
+          <div className="flex items-center gap-2 overflow-x-auto text-xs">
+            <span className="shrink-0 text-gray-500">📚 从收藏夹生成学习路线：</span>
+            {favlists.map((f) => (
+              <button
+                key={f.urlToken}
+                onClick={() => generateFromFavlist(f.urlToken, f.title)}
+                disabled={loading || favlistLoading}
+                title={f.description || f.title}
+                className="shrink-0 rounded-full border border-[#0066ff]/30 bg-white px-3 py-1 text-[#0066ff] transition hover:border-[#0066ff] hover:bg-[#f0f5ff] disabled:opacity-50"
+              >
+                {favlistLoading ? "读取中…" : f.title}
+              </button>
+            ))}
+          </div>
+        </div>
       )}
 
       {/* 引擎设置（可折叠） */}
