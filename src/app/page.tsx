@@ -25,7 +25,12 @@ const Excalidraw = dynamic(() => import("@excalidraw/excalidraw").then((m) => m.
 });
 
 type Engine = { id: string; baseURL?: string; apiKey?: string; model?: string };
-type Mode = "auto" | "viewpoint" | "roadmap";
+// 用户可见的两种模式；旧值 auto/viewpoint 通过 normalizeUserMode 兼容映射
+type Mode = "compare" | "roadmap";
+export function normalizeUserMode(value: unknown): Mode {
+  if (value === "roadmap") return "roadmap";
+  return "compare"; // auto/viewpoint/compare/未知值 → compare
+}
 
 // 本地缓存：graph 结构化数据（localStorage），画板元素序列化体积大放 sessionStorage
 const BOARD_KEY = "kanshan.board.v1";
@@ -41,12 +46,12 @@ type BoardCache = {
 
 export default function Home() {
   const [question, setQuestion] = useState("");
-  const [mode, setMode] = useState<Mode>("auto");
+  const [mode, setMode] = useState<Mode>("compare");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [graph, setGraph] = useState<GraphState | null>(null);
-  const [graphMode, setGraphMode] = useState<Mode>("viewpoint"); // 当前画板上的图类型
+  const [graphMode, setGraphMode] = useState<Mode>("compare"); // 当前画板上的图类型
   const [items, setItems] = useState<SearchResultItem[]>([]);
   const [sourceDocuments, setSourceDocuments] = useState<SourceDocument[]>([]);
   const [harnessEvent, setHarnessEvent] = useState<HarnessEventType | null>(null);
@@ -93,7 +98,7 @@ export default function Home() {
         if (!cache.graph || !(Array.isArray(g?.viewpoints) || Array.isArray(g?.stages) || (Array.isArray(g?.nodes) && g.presentation))) return;
         setGraph(cache.graph);
         graphRef.current = cache.graph;
-        setGraphMode(cache.mode === "roadmap" ? "roadmap" : "viewpoint");
+        setGraphMode(normalizeUserMode(cache.mode));
         if (cache.question) setQuestion(cache.question);
         if (Array.isArray(cache.items)) setItems(cache.items as SearchResultItem[]);
         setBoardMounted(true);
@@ -196,7 +201,7 @@ export default function Home() {
     }
   }, []);
 
-  const renderGraph = useCallback(async (g: GraphState, followed?: Set<string>, m: Mode = "viewpoint") => {
+  const renderGraph = useCallback(async (g: GraphState, followed?: Set<string>, m: Mode = "compare") => {
     const layout = await import("@/lib/excalidraw-layout");
     const elements = (
       m === "roadmap" && "question" in g
@@ -259,8 +264,8 @@ export default function Home() {
       apiRef.current = null; // 断开旧 Excalidraw 实例
       setError(null);
       setStatus("正在连接看山工作台…");
-      setHarnessEvent(mode === "auto" ? "planning" : null);
-      setHarnessProgress(mode === "auto" ? { stage: "planning", steps: [] } : null);
+      setHarnessEvent("planning");
+      setHarnessProgress({ stage: "planning", steps: [] });
       setSourceDocuments([]);
       try {
         // SSE 流式：素材先到（SourcesPanel 立刻有内容），骨架卡片先到（画板立刻落笔），正文详情后补
@@ -349,7 +354,7 @@ export default function Home() {
             // 骨架先到：卡片+标题立刻落画板（流式出图第一阶段）
             setGraph(data.graph);
             graphRef.current = data.graph;
-            setGraphMode("viewpoint");
+            setGraphMode(normalizeUserMode(data.mode));
             setHarnessEvent("synthesizing");
             setHarnessProgress((prev: HarnessProgress | null) => {
               const g = data.graph as { title?: string; nodes?: unknown[] } | undefined;
@@ -357,7 +362,7 @@ export default function Home() {
               return { stage: "synthesizing", steps: [...(prev?.steps ?? []), step] };
             });
             setBoardMounted(true);
-            await renderGraph(data.graph, undefined, "viewpoint");
+            await renderGraph(data.graph, undefined, normalizeUserMode(data.mode));
           } else if (event === "graph-detail") {
             // 详情后补：正文填充进已落卡片
             setGraph(data.graph);
@@ -366,12 +371,13 @@ export default function Home() {
               const step: HarnessStep = { label: "补全论据", output: "卡片正文已填充" };
               return { stage: "laying_out", steps: [...(prev?.steps ?? []), step] };
             });
-            await renderGraph(data.graph, undefined, "viewpoint");
+            await renderGraph(data.graph, undefined, normalizeUserMode(data.mode));
           } else if (event === "graph") {
             // 第二步：图落画板
             setGraph(data.graph);
             graphRef.current = data.graph;
-            setGraphMode(data.mode === "roadmap" ? "roadmap" : "viewpoint");
+            const finalMode = normalizeUserMode(data.mode);
+            setGraphMode(finalMode);
             setHarnessEvent("graph");
             setHarnessProgress((prev: HarnessProgress | null) => {
               const g = data.graph as { title?: string; nodes?: unknown[] } | undefined;
@@ -381,8 +387,8 @@ export default function Home() {
             // 成功后进度卡片保留 4 秒再收起，让用户看清每步做了什么
             setTimeout(() => setHarnessProgress(null), 4000);
             setBoardMounted(true);
-            await renderGraph(data.graph, undefined, data.mode);
-            persistBoard(data.graph, data.mode === "roadmap" ? "roadmap" : "viewpoint", question, streamedItems);
+            await renderGraph(data.graph, undefined, finalMode);
+            persistBoard(data.graph, finalMode, question, streamedItems);
             setStatus(
               data.cached
                 ? "已生成（缓存）"
@@ -496,7 +502,7 @@ export default function Home() {
   // Agent 对话修改后的 graph 回灌画板（按当前图类型选布局器）
   const applyAgentGraph = useCallback(
     (g: GraphState) => {
-      const nextMode: Mode = "stages" in g ? "roadmap" : "viewpoint";
+      const nextMode: Mode = "stages" in g ? "roadmap" : "compare";
       setGraph(g);
       graphRef.current = g;
       setGraphMode(nextMode);
@@ -521,8 +527,7 @@ export default function Home() {
             <div className="flex rounded-full border border-gray-200 bg-[#fafaf7] p-0.5 text-xs">
               {(
                 [
-                  { id: "auto", label: "智能编排" },
-                  { id: "viewpoint", label: "观点对照" },
+                  { id: "compare", label: "观点对照" },
                   { id: "roadmap", label: "学习路线" },
                 ] as const
               ).map((m) => (
@@ -630,7 +635,9 @@ export default function Home() {
             onChange={(e) => setQuestion(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && generate()}
             placeholder={
-              mode === "viewpoint" ? "输入有争议的问题，如：年轻人该不该买房" : mode === "roadmap" ? "输入领域关键词，如：前端入门" : "输入一个问题，智能选择资料与图形"
+              mode === "roadmap"
+                ? "输入学习目标或领域，如：我想做出一个能用的 Agent"
+                : "输入有争议的问题，如：年轻人该不该买房"
             }
             className="min-w-0 flex-1 rounded-full border border-gray-200 bg-[#fafaf7] py-2 pl-4 pr-3 text-sm outline-none transition focus:border-[#0066ff]/60 focus:bg-white focus:shadow-sm"
             disabled={loading}
@@ -893,9 +900,9 @@ export default function Home() {
                     </p>
                   </div>
                   <div className="flex flex-wrap justify-center gap-2 text-sm">
-                    {(mode === "viewpoint"
-                      ? ["年轻人该不该买房", "考研还是就业", "AI会取代程序员吗"]
-                      : ["前端入门", "数据分析", "考研政治"]
+                    {(mode === "roadmap"
+                      ? ["我想做出一个能用的 Agent", "前端入门", "数据分析"]
+                      : ["年轻人该不该买房", "考研还是就业", "AI会取代程序员吗"]
                     ).map((s) => (
                       <button
                         key={s}

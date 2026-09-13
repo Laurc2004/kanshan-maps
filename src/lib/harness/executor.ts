@@ -1,4 +1,4 @@
-import { fallbackPlan as defaultFallbackPlan, validatePlan as defaultValidatePlan } from "./planner.ts";
+import { fallbackPlan as defaultFallbackPlan, validatePlan as defaultValidatePlan, buildComparePlan, buildRoadmapPlan } from "./planner.ts";
 import { collectSources as defaultCollectSources } from "./sources.ts";
 import type { CollectResult, CollectSourcesInput, Fetchers } from "./sources.ts";
 import { pruneFillerNodes, synthesizeDetails, synthesizeSkeleton } from "./synthesizer.ts";
@@ -52,10 +52,19 @@ export interface HarnessDependencies {
 
 export type GenerationPath = "harness" | "legacy-viewpoint" | "legacy-roadmap";
 
+export type UserMode = "compare" | "roadmap";
+
+// 用户入口已收缩为 compare/roadmap 两种；旧值 auto/viewpoint 兼容映射
+export function normalizeUserMode(value: unknown): UserMode {
+  if (value === "roadmap") return "roadmap";
+  return "compare"; // auto/viewpoint/compare/未知值 → compare
+}
+
 export function resolveGenerationPath(mode: unknown): GenerationPath {
-  if (mode === "auto") return "harness";
-  if (mode === "roadmap") return "legacy-roadmap";
-  return "legacy-viewpoint";
+  const userMode = normalizeUserMode(mode);
+  // 两种用户模式统一走 Harness（旧 legacy 路径仅保留给直接引用，不再由 UI 触发）
+  void userMode;
+  return "harness";
 }
 
 function errorEvent(stage: string, error: unknown): HarnessEvent {
@@ -82,7 +91,10 @@ export async function* runHarness(
   input: HarnessInput,
   dependencies: HarnessDependencies = {},
 ): AsyncGenerator<HarnessEvent> {
-  const makePlan = dependencies.fallbackPlan ?? defaultFallbackPlan;
+  // 双模式 Planner：compare/roadmap 各用各的专用计划，其余意图走 fallbackPlan 兼容
+  const intentFromMode = normalizeUserMode((input as { mode?: unknown }).mode ?? input.intent);
+  const makePlan = dependencies.fallbackPlan
+    ?? (intentFromMode === "roadmap" ? buildRoadmapPlan : intentFromMode === "compare" ? buildComparePlan : defaultFallbackPlan);
   const validatePlan = dependencies.validatePlan ?? defaultValidatePlan;
   const collectSources = dependencies.collectSources ?? defaultCollectSources;
   let stage = "planning";

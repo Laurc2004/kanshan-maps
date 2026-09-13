@@ -26,15 +26,51 @@ const MAX_QUERY_COUNT = 3;
 const MAX_MODEL_CALLS = 3;
 const MAX_MILLIS = 60_000;
 
+/**
+ * 观点对照专用计划：docs 8、charsPerDoc 2600、modelCalls 1（默认一次完整生成）
+ */
+export function buildComparePlan(input: PlanInput): RunPlan {
+  const plan = fallbackPlan({ ...input, intent: "compare" });
+  return {
+    ...plan,
+    budget: {
+      ...plan.budget,
+      docs: Math.min(plan.budget.docs, 8),
+      charsPerDoc: Math.min(plan.budget.charsPerDoc, 2600),
+      modelCalls: Math.min(plan.budget.modelCalls, 1),
+    },
+  };
+}
+
+/**
+ * 学习路线专用计划：docs 8、charsPerDoc 2200、modelCalls 1，来源含 zhihu-knowledge 补充
+ */
+export function buildRoadmapPlan(input: PlanInput): RunPlan {
+  const plan = fallbackPlan({ ...input, intent: "roadmap" });
+  const sources = plan.sources.includes("zhihu-knowledge")
+    ? plan.sources
+    : ([...plan.sources, "zhihu-knowledge"] as SourceId[]).slice(0, 3);
+  return {
+    ...plan,
+    sources,
+    budget: {
+      ...plan.budget,
+      docs: Math.min(plan.budget.docs, 8),
+      charsPerDoc: Math.min(plan.budget.charsPerDoc, 2200),
+      modelCalls: Math.min(plan.budget.modelCalls, 1),
+    },
+  };
+}
+
 function clamp<T>(value: T | undefined, allowed: readonly T[], fallback: T): T {
   if (value !== undefined && allowed.includes(value)) return value;
   return fallback;
 }
 
 function detectIntent(query: string, explicit?: string): IntentKind {
-  // Unknown explicit intent falls back to concept-map (no keyword guessing).
+  // Unknown explicit intent falls back to compare (不再用 concept-map 作为通用兜底).
   if (explicit !== undefined && !ALLOWED_INTENTS.includes(explicit as IntentKind)) {
-    return "concept-map";
+    return "compare";
   }
   // If an explicit valid intent is provided, use it
   if (explicit && ALLOWED_INTENTS.includes(explicit as IntentKind)) {
@@ -59,7 +95,7 @@ function detectIntent(query: string, explicit?: string): IntentKind {
     return "compare";
   }
 
-  return "concept-map";
+  return "compare";
 }
 
 function pickLayout(intent: IntentKind, explicit?: string): LayoutKind {

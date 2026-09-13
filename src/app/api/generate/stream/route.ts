@@ -50,10 +50,10 @@ export async function POST(req: NextRequest) {
   const q = question.trim();
   const engineId = engine?.id || "builtin";
   const generationPath = resolveGenerationPath(mode);
-  const graphMode = mode === "roadmap" ? "roadmap" : "viewpoint";
+  const userMode = mode === "roadmap" ? "roadmap" : "compare";
   // 用户自选回答直传（跳过搜索）；缓存键区分，避免污染全量缓存
   const hasPicked = Array.isArray(passedItems) && passedItems.length > 0;
-  const cacheMode = generationPath === "harness" ? "auto" : graphMode;
+  const cacheMode = generationPath === "harness" ? userMode : userMode === "roadmap" ? "roadmap" : "viewpoint";
   const engineKey = `${engineId}:${engine?.model ?? ""}:${engine?.baseURL ?? ""}`;
   const cacheKey = `${cacheMode}:${engineKey}:${q.toLowerCase()}${hasPicked ? `:picked${passedItems.length}` : ""}`;
 
@@ -67,7 +67,7 @@ export async function POST(req: NextRequest) {
             if (hit && Date.now() - hit.ts < TTL) {
               send("status", { text: "已生成（缓存）" });
               send("sources", { items: hit.items });
-              send("graph", { graph: hit.graph, mode: "auto", cached: true });
+              send("graph", { graph: hit.graph, mode: userMode, cached: true });
               send("done", {});
               controller.close();
               return;
@@ -82,6 +82,7 @@ export async function POST(req: NextRequest) {
             : undefined;
           const harnessInput = {
             query: q,
+            mode: userMode,
             engine: {
               id: engineId === "custom" || engineId === "zhida" ? engineId : "builtin",
               baseURL: engine?.baseURL,
@@ -89,6 +90,7 @@ export async function POST(req: NextRequest) {
               model: engine?.model,
             },
             signal: req.signal,
+            ...(userMode === "roadmap" ? { intent: "roadmap" } : { intent: "compare" }),
             ...(pickedDocuments ? { picked: pickedDocuments, sources: ["picked"] } : {}),
           };
           let finalGraph: unknown;
@@ -102,16 +104,16 @@ export async function POST(req: NextRequest) {
               // 骨架先到：前端立刻落卡片+标题（流式感）
               const data = event.data as { graph: unknown; sources?: number; documents?: unknown[] };
               finalGraph = data.graph;
-              send("graph-skeleton", { ...data, mode: "auto" });
+              send("graph-skeleton", { ...data, mode: userMode });
             } else if (event.type === "graph-detail") {
               // 详情后补：正文逐字填充已落卡片
               const data = event.data as { graph: unknown };
               finalGraph = data.graph;
-              send("graph-detail", { ...data, mode: "auto" });
+              send("graph-detail", { ...data, mode: userMode });
             } else if (event.type === "graph") {
               const data = event.data as { graph: unknown; sources?: number };
               finalGraph = data.graph;
-              send("graph", { ...data, mode: "auto", cached: false });
+              send("graph", { ...data, mode: userMode, cached: false });
             } else {
               send(event.type, event.data);
             }
@@ -133,7 +135,7 @@ export async function POST(req: NextRequest) {
           if (hit && Date.now() - hit.ts < TTL) {
             send("status", { text: "已生成（缓存）" });
             send("sources", { items: hit.items });
-            send("graph", { graph: hit.graph, mode: graphMode, cached: true });
+            send("graph", { graph: hit.graph, mode: userMode === "roadmap" ? "roadmap" : "viewpoint", cached: true });
             send("done", {});
             controller.close();
             return;
@@ -158,7 +160,7 @@ export async function POST(req: NextRequest) {
 
         const engineCfg = { id: engineId, baseURL: engine?.baseURL, apiKey: engine?.apiKey, model: engine?.model };
 
-        if (graphMode === "roadmap") {
+        if (userMode === "roadmap") {
           send("status", { text: `正在从 ${items.length} 条回答里提炼学习路径…` });
           const raw = await runEngine(engineCfg, buildRoadmapMessages(q, items));
           const graph = parseRoadmapJson(raw, q, items);
