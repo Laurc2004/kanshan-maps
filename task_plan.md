@@ -261,6 +261,13 @@
 - [ ] 9 样式细节 kimi k3 润色（BoardControls 视觉/ProfileCenter tab 打磨）+ E2E 浏览器冒烟（可选）
 - [ ] 10 用户验收后提交
 
+## Phase 21: 黑客松 README 重写 — status: complete
+背景：用户要求按官方两份文档（参赛流程指南 + 开发者手册）重写 README，突出产品定位对评分维度的命中与 Harness 架构创新，作为代码仓库加分项。
+- [x] 读官方文档：评审标准（AI场景价值40/创新25/完成度25/设计10）、交付清单（demo必交/计划书必交/代码仓库加分）
+- [x] 读 task_plan/findings/progress + harness 设计文档，盘点真实功能与架构事实
+- [x] 重写 README.md（一句话定位 + 与通用导图工具对照表、四维评分逐项对照、Harness ASCII 架构图 + 6 条工程设计亮点、技术栈、快速开始 + 环境变量、项目结构、测试基线、路线图、合规致谢）
+- [x] 验证：docs 相对链接存在、域名统一 kanshan.space（线上 200）、测试数字与 Phase 20 记录一致（152/146/0/6、16 路由）
+
 ## Phase 17: 双模式 Harness + Agent 2.0 + 个性化实施 — status: complete
 - [x] A 双模式收缩（compare/roadmap，隐藏 auto）
 - [x] B Agent 2.0（语义协议 + 原子提交 + 风险分级 + 预览确认）

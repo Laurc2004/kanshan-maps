@@ -18,7 +18,7 @@ const LAYOUT_LABELS: Record<LayoutKind, string> = {
 
 /**
  * 嵌入 Excalidraw renderTopRightUI 的版式/颜色控件。
- * 不再使用外层绝对定位浮层，避免与画布层叠上下文冲突导致的遮挡/错位。
+ * Island 同款包装（10px 圆角 + #ecece8 边框 + 轻阴影），与画板原生 UI 协调。
  */
 export function BoardPresentationControls({ graph, busy, onChange }: {
   graph: GraphLike;
@@ -35,7 +35,7 @@ export function BoardPresentationControls({ graph, busy, onChange }: {
         value={currentLayout}
         disabled={busy}
         onChange={(event) => onChange(event.target.value as LayoutKind, currentPalette)}
-        className="ks-board-select rounded-lg border border-[#e0e0db] bg-white px-2 py-1 text-xs text-gray-600 outline-none transition hover:border-[#0066ff]/50"
+        className="ks-board-select h-7 rounded-lg border border-transparent bg-transparent px-2 text-xs text-gray-700 outline-none transition hover:bg-[#f4f4f0] hover:text-[#1a1a1a]"
         aria-label="版式"
       >
         {layouts.map((layout) => <option key={layout} value={layout}>{LAYOUT_LABELS[layout] ?? layout}</option>)}
@@ -44,7 +44,7 @@ export function BoardPresentationControls({ graph, busy, onChange }: {
         value={currentPalette}
         disabled={busy}
         onChange={(event) => onChange(currentLayout, event.target.value as PaletteId)}
-        className="ks-board-select rounded-lg border border-[#e0e0db] bg-white px-2 py-1 text-xs text-gray-600 outline-none transition hover:border-[#0066ff]/50"
+        className="ks-board-select h-7 rounded-lg border border-transparent bg-transparent px-2 text-xs text-gray-700 outline-none transition hover:bg-[#f4f4f0] hover:text-[#1a1a1a]"
         aria-label="颜色"
       >
         {PALETTES.map((palette) => <option key={palette.id} value={palette.id}>{palette.label}</option>)}
@@ -97,11 +97,11 @@ export function BoardShareButtons({ graph, makePng }: { graph: GraphLike; makePn
   };
   return (
     <div className="flex items-center gap-1.5" data-testid="board-share">
-      {notice && <span className="max-w-44 truncate text-[10px] text-gray-500" role="status">{notice}</span>}
+      {notice && <span className="rounded-full bg-[#1a1a1a]/85 px-2.5 py-1 text-[11px] text-white shadow-sm" role="status">{notice}</span>}
       <button
         onClick={saveImage}
         disabled={saving}
-        className="flex items-center gap-1 rounded-lg border border-[#e0e0db] bg-white px-2.5 py-1.5 text-xs text-gray-600 transition hover:border-[#0066ff]/50 hover:text-[#0066ff] disabled:opacity-50"
+        className="flex h-7 items-center gap-1 rounded-[10px] px-2.5 text-xs text-gray-700 transition hover:bg-[#f4f4f0] hover:text-[#1a1a1a] disabled:opacity-50"
         title="保存为 PNG 图片（带来源水印）"
       >
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -111,7 +111,7 @@ export function BoardShareButtons({ graph, makePng }: { graph: GraphLike; makePn
       </button>
       <button
         onClick={shareToZhihu}
-        className="flex items-center gap-1 rounded-lg bg-[#0066ff] px-3 py-1.5 text-xs font-medium text-white transition hover:bg-[#0052cc]"
+        className="flex h-7 items-center gap-1 rounded-[10px] bg-[#0066ff] px-3 text-xs font-medium text-white shadow-[0_1px_3px_rgb(0_102_255/0.35)] transition hover:bg-[#0052cc]"
         title="复制分享文案并打开系统分享"
       >
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

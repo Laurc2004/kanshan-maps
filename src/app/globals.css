@@ -127,7 +127,13 @@ body {
 
 /* 导出按钮：Excalidraw Island 同款视觉（--color-surface-lowest 背景 + 边框 + 阴影变量） */
 .ks-board-select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 1.4rem;
   font-family: inherit;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%236b7280' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.4rem center;
 }
 .ks-board-select option {
   color: #343a40;

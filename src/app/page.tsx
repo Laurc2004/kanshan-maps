@@ -685,22 +685,22 @@ export default function Home() {
                 <path d="M8 10h.01M12 10h.01M16 10h.01M21 12a9 9 0 01-9 9 9 9 0 01-4-.8L3 21l1-3.2A9 9 0 1121 12z" />
               </svg>
             </button>
-            <button
-              onClick={() => setShowProfile((v) => !v)}
-              disabled={!me.loggedIn}
-              title={me.loggedIn ? "个人中心（收藏夹 / 本机地图 / 关注）" : "登录后可用"}
-              className={`flex items-center gap-1.5 rounded-full border p-2 transition disabled:cursor-not-allowed disabled:opacity-30 ${
-                showProfile && me.loggedIn
-                  ? "border-[#0066ff]/30 bg-[#f0f5ff] text-[#0066ff]"
-                  : "border-gray-200 text-gray-400 hover:border-[#0066ff]/30 hover:text-[#0066ff]"
-              }`}
-            >
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" />
-                <circle cx="12" cy="7" r="4" />
-              </svg>
-              <span className="hidden text-xs font-medium lg:inline">个人中心</span>
-            </button>
+            {me.loggedIn && (
+              <button
+                onClick={() => setShowProfile((v) => !v)}
+                title="个人中心（收藏夹 / 本机地图 / 关注）"
+                className={`rounded-full border p-2 transition ${
+                  showProfile
+                    ? "border-[#0066ff]/30 bg-[#f0f5ff] text-[#0066ff]"
+                    : "border-gray-200 text-gray-400 hover:border-[#0066ff]/30 hover:text-[#0066ff]"
+                }`}
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" />
+                  <circle cx="12" cy="7" r="4" />
+                </svg>
+              </button>
+            )}
             <button
               onClick={() => setPendingClear(true)}
               disabled={loading || !graph}
@@ -948,7 +948,7 @@ export default function Home() {
                 langCode="zh-CN"
                 theme="light"
                 renderTopRightUI={() => (
-                  <div className="ks-board-ui flex items-center gap-1.5" data-testid="board-topright-ui">
+                  <div className="ks-board-ui flex items-center gap-1.5 rounded-[10px] border border-[#ecece8] bg-white p-1 shadow-[0_2px_10px_rgb(0_0_0/0.05)]" data-testid="board-topright-ui">
                     {graph && <BoardPresentationControls graph={graph} busy={loading} onChange={changePresentation} />}
                     {graph && <BoardShareButtons graph={graph} makePng={makePng} />}
                   </div>
