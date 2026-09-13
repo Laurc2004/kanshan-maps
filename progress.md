@@ -109,3 +109,10 @@
 - 遗留门：真实授权联调需用户本人在 https://kanshan-maps.vercel.app 点击登录并确认知乎授权页（Skill 明确 Agent 不代点）
 - 用户已在活动页登记回调（2026-09-13）；curl 验证 openapi.zhihu.com/authorize 对 app_id=436 + redirect_uri=kanshan-maps.vercel.app/api/auth/callback 返回 302 到正常登录页（未报回调非法）→ 登记生效确认
 - T11 关闭：用户本人完成知乎授权（16:06 生产日志 login 307 → callback 307 → me 200 → followees 200），OAuth 真实闭环全绿；Phase 10 全部 11 个任务完成
+
+
+## Session 10 — 2026-09-13（Phase 11: 编排步骤展示 + 综合失败修复）— complete
+- 用户报错 `编排 · 出错 知乎回答 KnowledgeGraph title must not be empty`；要求编排步骤在看山助手面板展示
+- 根因链：title 回退只是表层；curl 探测 builtin 模型发现 system prompt 无 schema 时模型自创 schema.org JSON（nodes/title 为空）→ 显式 schema prompt 修复
+- AgentPanel 新增 HarnessProgress 卡片：分步 ✓ 列表（规划→检索→整理素材→综合→布局→验证）+ 出错时红色卡片就地显示错误
+- 验证：synthesizer 5/5、全量回归、tsc、lint 0 错、build 过；本地 SSE 真实问题全链路 8 事件出图（9 节点/8 边/10 引用）；生产部署 d25d937 后 SSE 实测 graph 事件正常（标题正常）
