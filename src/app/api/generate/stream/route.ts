@@ -2,6 +2,8 @@ import { NextRequest } from "next/server";
 import { zhihuSearch } from "@/lib/zhihu";
 import { extractViewpoints } from "@/lib/viewpoints";
 import { buildRoadmapMessages, parseRoadmapJson } from "@/lib/roadmap";
+import { runHarness, resolveGenerationPath } from "@/lib/harness/executor";
+import { normalizeSearchItem } from "@/lib/harness/sources";
 
 // SSE 流式生成：先推素材（sources）→ 再推图（graph），分步可见
 // mode=viewpoint（观点对照图，默认）/ roadmap（学习路线图）
@@ -47,15 +49,75 @@ export async function POST(req: NextRequest) {
   }
   const q = question.trim();
   const engineId = engine?.id || "builtin";
+  const generationPath = resolveGenerationPath(mode);
   const graphMode = mode === "roadmap" ? "roadmap" : "viewpoint";
   // 用户自选回答直传（跳过搜索）；缓存键区分，避免污染全量缓存
   const hasPicked = Array.isArray(passedItems) && passedItems.length > 0;
-  const cacheKey = `${graphMode}:${engineId}:${q.toLowerCase()}${hasPicked ? `:picked${passedItems.length}` : ""}`;
+  const cacheMode = generationPath === "harness" ? "auto" : graphMode;
+  const engineKey = `${engineId}:${engine?.model ?? ""}:${engine?.baseURL ?? ""}`;
+  const cacheKey = `${cacheMode}:${engineKey}:${q.toLowerCase()}${hasPicked ? `:picked${passedItems.length}` : ""}`;
 
   const stream = new ReadableStream({
     async start(controller) {
       const send = (event: string, data: unknown) => controller.enqueue(new TextEncoder().encode(sse(event, data)));
       try {
+        if (generationPath === "harness") {
+          if (!hasPicked) {
+            const hit = cache.get(cacheKey);
+            if (hit && Date.now() - hit.ts < TTL) {
+              send("status", { text: "已生成（缓存）" });
+              send("sources", { items: hit.items });
+              send("graph", { graph: hit.graph, mode: "auto", cached: true });
+              send("done", {});
+              controller.close();
+              return;
+            }
+          }
+
+          const pickedDocuments = hasPicked
+            ? passedItems.map((item: Record<string, unknown>, index: number) => ({
+              ...normalizeSearchItem(item as never, "picked"),
+              id: `picked:${String(item.ContentID ?? index)}`,
+            }))
+            : undefined;
+          const harnessInput = {
+            query: q,
+            engine: {
+              id: engineId === "custom" || engineId === "zhida" ? engineId : "builtin",
+              baseURL: engine?.baseURL,
+              apiKey: engine?.apiKey,
+              model: engine?.model,
+            },
+            signal: req.signal,
+            ...(pickedDocuments ? { picked: pickedDocuments, sources: ["picked"] } : {}),
+          };
+          let finalGraph: unknown;
+          let finalItems: unknown[] = [];
+          for await (const event of runHarness(harnessInput, {})) {
+            if (event.type === "sources") {
+              const data = event.data as { documents?: unknown[] };
+              finalItems = data.documents ?? [];
+              send("sources", { items: finalItems, errors: (data as { errors?: unknown[] }).errors ?? [] });
+            } else if (event.type === "graph") {
+              const data = event.data as { graph: unknown; sources?: number };
+              finalGraph = data.graph;
+              send("graph", { ...data, mode: "auto", cached: false });
+            } else {
+              send(event.type, event.data);
+            }
+            if (event.type === "error") {
+              controller.close();
+              return;
+            }
+          }
+          if (finalGraph) {
+            cache.set(cacheKey, { graph: finalGraph, items: finalItems, ts: Date.now() });
+          }
+          send("done", {});
+          controller.close();
+          return;
+        }
+
         if (!hasPicked) {
           const hit = cache.get(cacheKey);
           if (hit && Date.now() - hit.ts < TTL) {
