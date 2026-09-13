@@ -1,28 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { KnowledgeGraph } from "@/lib/harness/types";
-import type { RoadmapGraph } from "@/lib/roadmap";
 import type { ViewpointGraph } from "@/lib/viewpoints";
-import { roadmapToKnowledgeGraph, viewpointToKnowledgeGraph } from "@/lib/harness/compat";
 import { decideAgentAction } from "@/lib/agent/decide";
 import { applyChangesAtomically, classifyRisk } from "@/lib/agent/apply";
 import { graphHash } from "@/lib/agent/types";
 import { buildAgentMessages, parseAgentResponse, applyOps, type GraphOp } from "@/lib/graph-patch";
-
-function isKnowledgeGraph(graph: unknown): graph is KnowledgeGraph {
-  const value = graph as KnowledgeGraph | null;
-  return !!value && typeof value === "object" && Array.isArray(value.nodes) && Array.isArray(value.edges)
-    && Array.isArray(value.groups) && Array.isArray(value.citations) && !!value.presentation;
-}
-
-function isRoadmapGraph(graph: unknown): graph is RoadmapGraph {
-  const value = graph as RoadmapGraph | null;
-  return !!value && value.kind === "roadmap" && typeof value.topic === "string" && Array.isArray(value.stages);
-}
-
-function isViewpointGraph(graph: unknown): graph is ViewpointGraph {
-  const value = graph as ViewpointGraph | null;
-  return !!value && Array.isArray((value as ViewpointGraph).viewpoints) && typeof (value as ViewpointGraph).question === "string";
-}
+import { normalizeAgentGraph } from "@/lib/graph-contract";
 
 // preview 暂存：planId -> { changes, graphHash, expiresAt }
 // 生产多实例下会退化为 miss（用户需重新确认），黑客松单实例可用
@@ -43,7 +26,8 @@ export async function POST(req: NextRequest) {
       if (!planId || typeof planId !== "string") {
         return NextResponse.json({ error: "缺少 planId" }, { status: 400 });
       }
-      if (!isKnowledgeGraph(graph)) {
+      const normalized = normalizeAgentGraph(graph);
+      if (!normalized) {
         return NextResponse.json({ error: "缺少当前图数据" }, { status: 400 });
       }
       const pending = previewStore.get(planId);
@@ -51,13 +35,13 @@ export async function POST(req: NextRequest) {
         previewStore.delete(planId);
         return NextResponse.json({ error: "预览已过期，请重新让助手生成修改方案", code: "preview_expired" }, { status: 409 });
       }
-      const currentHash = graphHash(graph);
+      const currentHash = graphHash(normalized);
       if (currentHash !== pending.hash) {
         previewStore.delete(planId);
         return NextResponse.json({ error: "画布在你确认前发生了变化，请基于最新版本重新生成方案", code: "graph_changed" }, { status: 409 });
       }
       previewStore.delete(planId);
-      const result = applyChangesAtomically(graph, pending.changes as never);
+      const result = applyChangesAtomically(normalized, pending.changes as never);
       if (!result.ok) {
         return NextResponse.json({ error: `修改未通过校验：${result.issues[0]?.message ?? "未知原因"}`, failed: result.issues.map((i) => i.message) }, { status: 422 });
       }
@@ -75,12 +59,13 @@ export async function POST(req: NextRequest) {
     if (!message || typeof message !== "string") {
       return NextResponse.json({ error: "消息不能为空" }, { status: 400 });
     }
-    if (!graph || (!isViewpointGraph(graph) && !isKnowledgeGraph(graph) && !isRoadmapGraph(graph))) {
+    const normalizedGraph = normalizeAgentGraph(graph);
+    if (!normalizedGraph) {
       return NextResponse.json({ error: "缺少当前图数据，请先生成一张图" }, { status: 400 });
     }
 
     // 版本冲突预检：前端带了 baseHash 且与当前图不一致 → 409
-    if (typeof baseHash === "string" && isKnowledgeGraph(graph)) {
+    if (typeof baseHash === "string" && normalizedGraph) {
       // baseHash 是客户端上次见到的版本；这里无法直接比对（graph 是当前快照），
       // 真正的冲突检测依赖客户端发请求时用的 graph 就是最新快照。
       // 保留字段以便后续接入服务端会话态。
@@ -109,9 +94,7 @@ export async function POST(req: NextRequest) {
 
     // 统一转 KnowledgeGraph IR（legacy viewpoint/roadmap 经兼容层转换）
     let kg: KnowledgeGraph | null = null;
-    if (isKnowledgeGraph(graph)) kg = graph;
-    else if (isRoadmapGraph(graph)) kg = roadmapToKnowledgeGraph(graph);
-    else if (isViewpointGraph(graph)) kg = viewpointToKnowledgeGraph(graph);
+    kg = normalizedGraph;
 
     const recentChanges = (Array.isArray(history) ? history : [])
       .slice(-4)
@@ -175,7 +158,8 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // legacy viewpoint 兜底（compat 转换失败时的安全网，正常不会走到）
+    // The normalizer rejects unsupported shapes before this point; retain the
+    // legacy patch protocol as a defensive fallback for future graph kinds.
     const messages = buildAgentMessages(history ?? [], graph as ViewpointGraph, message);
     const raw = await complete(messages);
     const parsed = parseAgentResponse(raw);

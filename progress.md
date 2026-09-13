@@ -4,6 +4,19 @@
 - 文档覆盖双模式 Harness、来源预处理、模型调用、知乎个性化、Agent 2.0、原子 patch、预览确认、graph version、局部渲染、测试和分阶段实施。
 - 本轮只完成方案文档，没有修改业务代码。
 
+## Session 18 — 2026-09-13（知识资产与分享闭环）— complete
+- Read the approved Phase 18 scope, tracked planning files, repository rules, current graph/Agent/layout/profile/API code, official user API reference, and installed Next client-component guidance.
+- Confirmed working tree contains only the parent-owned Phase 18 addition to `task_plan.md`; implementation will proceed serially in this same worker.
+- First implementation gate: reproduce the graph contract at `/api/agent`, then add a boundary normalizer and focused regression tests before UI work.
+- Verification repair: `src/lib/harness/compat.ts` now converts citation IDs back to real URLs for roadmap round-trips; this fixed two pre-existing compatibility regressions in the full Node runner.
+- Added focused summary parser tests (single source-grounded prompt, URL-backed points only, malformed/source-free rejection) and strengthened local-library tests for account namespaces/capabilities/stable IDs.
+- Focused verification passed: `node --test --experimental-strip-types src/lib/summary.test.ts src/lib/local-library.test.ts src/lib/harness/compat.test.ts src/lib/graph-contract.test.ts src/lib/knowledge-assets.test.ts src/lib/presentation-controls.test.ts src/lib/share.test.ts` = 22/22; `npx tsc --noEmit` passed; `npm run lint` passed with 5 existing warnings; `git diff --check` passed.
+- Full runner initially found two roadmap citation round-trip failures; the compatibility fix resolved them. Final canonical Node runner: `node --test --experimental-strip-types $(rg --files src | rg '\.test\.ts$' | sort)` = 147 tests / 141 pass / 0 fail / 6 OAuth integration skips.
+- Final quality gates: `npm run lint -- --quiet`, `npx tsc --noEmit`, `npm run build`, and `git diff --check` all exited 0; production build emitted 16 routes.
+- Local production HTTP/API smoke on `127.0.0.1:3218`: homepage 200, auth/me 200 logged-out, unauthenticated favlists 401, Agent missing graph 400, stream missing question 400.
+- Real configured model smoke: compare query `考研还是就业` returned HTTP 200 SSE with 10 real Zhihu sources, a four-viewpoint graph, and `done`; no fake upstream fixture was used.
+- Playwright Chromium smoke at desktop 1440×1000 and iPhone 13 viewport loaded compare/roadmap/summary controls and Agent UI with zero page errors. Hermes real-profile browser was unavailable because its Chrome profile databases were locked, so authenticated profile-only UI and a fully automated summary/share click chain were not claimed.
+
 
 ## Session 8 — 2026-09-12（Phase 10: Harness 架构设计）— in_progress
 - 用户批准总体方向：Intent → Source → Synthesis → Layout → Style → Validate → Render

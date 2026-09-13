@@ -60,7 +60,16 @@
 - 骨架阶段输出不带顶层 citations 数组，必须先按节点 citation id 推导 citations 再走 validateCitations，否则节点引用会被白名单清空。
 - 卡片 link 必须存真实 URL 而不是内部 citation id；Excalidraw link 元素的点击要用 onPointerDown 的 hit.element.link 自己 window.open（hit.element 是 PointerDownState 内置字段，0.18 类型里可用）。
 - Harness 预算收紧到 docs 8 / charsPerDoc 2600 / timeout 60s 后，实测 8 节点图的节点正文全部是有具体论断的真观点，凑数节点消失；charsPerDoc 太长只会让模型慢且产水货。
-- 工具回显把 `apiKey: string` 打码为 `***`（凭据保护误判），文件 on-disk 完好，不要当成损坏去修。
+- 工具回显把 `apiKey: *** 打码为 `***`（凭据保护误判），文件 on-disk 完好，不要当成损坏去修。
+
+## Phase 18 implementation findings
+- The page state accepts three graph representations, while `/api/agent` must validate and convert them before Agent 2.0. The contract fix belongs at the route boundary, not in the panel UI, so legacy compare and roadmap requests cannot be rejected as missing graph data.
+- `KnowledgeGraph.citations` currently contains citation IDs while legacy graphs contain URLs. Rendering must resolve IDs to URLs and preserve a source index in the canvas/export metadata; never put an internal citation ID in an Excalidraw link.
+- Existing board persistence is browser `localStorage`/`sessionStorage`, not cloud storage. Any My Kanshan UI must label this explicitly and must not imply server persistence.
+- Official user API documentation confirms followees, favlists, and favlist contents; it does not establish a dynamic follow/like mutation API. The implementation will provide read-only followed-content highlighting and link-out actions only.
+- Unified IR stores citation IDs on nodes, so reverse compatibility must resolve those IDs through `graph.citations` before reconstructing legacy roadmap/viewpoint source URLs; returning IDs as URLs silently corrupts legacy Agent input.
+- Summary generation is implemented only in `/api/generate/stream` for now: it uses one model call and accepts only HTTP(S) source URLs referenced by valid `sourceIndexes`; the non-stream `/api/generate` route has no summary mode contract and remains unmodified.
+- Local-library storage is explicitly device/local-only and namespace-scoped. Namespace sanitization is for key isolation, not authentication; callers must derive the namespace from their authenticated session and must not treat local storage as server persistence.
 
 ## 追加发现：Phase 10
 - Harness 契约必须严格以批准设计为准：intent 是 compare/roadmap/timeline/concept-map/argument-map/summary-board，source 是按优先级的数组，layout 仅使用 6 个确定性模板。

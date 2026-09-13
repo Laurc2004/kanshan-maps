@@ -13,6 +13,15 @@ import AgentPanel, { type HarnessProgress, type HarnessStep } from "@/components
 import SourcesPanel, { type HotItem } from "@/components/SourcesPanel";
 import { requestClearBoard } from "@/lib/board-actions";
 import HarnessStatus from "@/components/HarnessStatus";
+import SourceIndex from "@/components/SourceIndex";
+import SharePanel from "@/components/SharePanel";
+import PresentationControls from "@/components/PresentationControls";
+import ProfileCenter from "@/components/ProfileCenter";
+import { collectKnowledgeSources } from "@/lib/knowledge-assets";
+import { applyPresentation } from "@/lib/presentation-controls";
+import { deleteBoard, listSavedBoards, saveBoard, type SavedBoard } from "@/lib/local-library";
+import { addWatermark } from "@/lib/share";
+import type { LayoutKind, PaletteId } from "@/lib/harness/types";
 
 const Excalidraw = dynamic(() => import("@excalidraw/excalidraw").then((m) => m.Excalidraw), {
   ssr: false,
@@ -26,9 +35,10 @@ const Excalidraw = dynamic(() => import("@excalidraw/excalidraw").then((m) => m.
 
 type Engine = { id: string; baseURL?: string; apiKey?: string; model?: string };
 // 用户可见的两种模式；旧值 auto/viewpoint 通过 normalizeUserMode 兼容映射
-type Mode = "compare" | "roadmap";
+type Mode = "compare" | "roadmap" | "summary";
 export function normalizeUserMode(value: unknown): Mode {
   if (value === "roadmap") return "roadmap";
+  if (value === "summary") return "summary";
   return "compare"; // auto/viewpoint/compare/未知值 → compare
 }
 
@@ -65,6 +75,11 @@ export default function Home() {
   const [pendingClear, setPendingClear] = useState(false); // 清空画布确认弹窗
   const [me, setMe] = useState<{ loggedIn: boolean; name?: string }>({ loggedIn: false });
   const [followeeCount, setFolloweeCount] = useState(0);
+  const [followeeNames, setFolloweeNames] = useState<string[]>([]);
+  const [savedBoards, setSavedBoards] = useState<SavedBoard[]>([]);
+  const [activeFavlist, setActiveFavlist] = useState<{ urlToken: number; title: string; description: string } | null>(null);
+  const [favlistItems, setFavlistItems] = useState<SearchResultItem[]>([]);
+  const [selectedFavlistIds, setSelectedFavlistIds] = useState<Set<string>>(new Set());
   const [authNotice, setAuthNotice] = useState<string | null>(null);
 
   const apiRef = useRef<ExcalidrawImperativeAPI | null>(null);
@@ -77,6 +92,7 @@ export default function Home() {
   const [pendingHot, setPendingHot] = useState<string | null>(null); // 热榜确认弹窗
   const [generating, setGenerating] = useState(false); // 画板生成中遮罩
   const [restored, setRestored] = useState(false); // 是否从缓存恢复
+
 
   // 启动：读登录态 + 处理 OAuth 回调错误参数 + 拉热榜
   useEffect(() => {
@@ -92,6 +108,7 @@ export default function Home() {
     // 微任务里 setState，绕开 effect 内同步 setState 告警（同 authError 处理）
     queueMicrotask(() => {
       try {
+        setSavedBoards(listSavedBoards(localStorage));
         const raw = localStorage.getItem(BOARD_KEY);
         if (!raw) return;
         const cache = JSON.parse(raw) as BoardCache;
@@ -136,6 +153,7 @@ export default function Home() {
           (d.names ?? []).map((n: string) => n.replace(/\s+/g, "").toLowerCase())
         );
         followeesRef.current = names;
+        setFolloweeNames((d.names ?? []).filter((name: unknown): name is string => typeof name === "string"));
         setFolloweeCount(names.size);
         if (graphRef.current) renderGraphRef.current(graphRef.current, names);
       })
@@ -178,6 +196,19 @@ export default function Home() {
     },
     [favlistLoading, loading]
   );
+  const openFavlist = useCallback(async (favlist: { urlToken: number; title: string; description: string }) => {
+    if (favlistLoading) return;
+    setActiveFavlist(favlist); setFavlistLoading(true); setError(null);
+    try {
+      const response = await fetch(`/api/me/favlist-contents?urlToken=${favlist.urlToken}`);
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "收藏夹内容获取失败");
+      const next = (data.items ?? []) as SearchResultItem[];
+      setFavlistItems(next); setSelectedFavlistIds(new Set(next.map((item) => item.ContentID)));
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "收藏夹读取失败"); setFavlistItems([]); setSelectedFavlistIds(new Set()); }
+    finally { setFavlistLoading(false); }
+  }, [favlistLoading]);
+
   // 稳定引用：excalidrawAPI 回调不随 state 变化重建（避免重复挂载双实例）
   const onApiReady = useCallback((api: ExcalidrawImperativeAPI) => {
     apiRef.current = api;
@@ -426,6 +457,8 @@ export default function Home() {
             setBoardMounted(true);
             await renderGraph(data.graph, undefined, finalMode);
             persistBoard(data.graph, finalMode, question, streamedItems);
+            const boardTitle = "question" in data.graph ? data.graph.question : "topic" in data.graph ? data.graph.topic : data.graph.title;
+            setSavedBoards(saveBoard(localStorage, { id: `${finalMode}:${boardTitle}`, title: boardTitle, mode: finalMode === "roadmap" ? "roadmap" : "compare", graph: data.graph, savedAt: Date.now() }));
             setStatus(
               data.cached
                 ? "已生成（缓存）"
@@ -533,6 +566,23 @@ export default function Home() {
     [generate, loading]
   );
 
+  const generateFavlistSelection = useCallback((nextMode: "roadmap" | "summary") => {
+    if (!activeFavlist) return;
+    const picked = favlistItems.filter((item) => selectedFavlistIds.has(item.ContentID));
+    if (!picked.length) return;
+    setQuestion(`收藏夹「${activeFavlist.title}」${nextMode === "summary" ? "摘要" : "学习路线"}`); setMode(nextMode); setPendingItems(picked); setShowProfile(false);
+  }, [activeFavlist, favlistItems, selectedFavlistIds]);
+  const openSavedBoard = useCallback((board: SavedBoard) => {
+    const restoredGraph = board.graph as GraphState;
+    const restoredMode: Mode = board.mode === "roadmap" ? "roadmap" : "presentation" in restoredGraph && restoredGraph.kind === "cluster-board" ? "summary" : "compare";
+    setGraph(restoredGraph); graphRef.current = restoredGraph; setGraphMode(restoredMode); setMode(restoredMode); setQuestion(board.title); setBoardMounted(true); setShowProfile(false); renderGraph(restoredGraph, undefined, restoredMode); persistBoard(restoredGraph, restoredMode, board.title);
+  }, [persistBoard, renderGraph]);
+  const changePresentation = useCallback((layout: LayoutKind, palette: PaletteId) => {
+    if (!graph) return;
+    try { const next = applyPresentation(graph, layout, palette); const nextMode: Mode = layout === "swimlane-roadmap" || layout === "timeline" ? "roadmap" : graphMode; setGraph(next); graphRef.current = next; setGraphMode(nextMode); renderGraph(next, undefined, nextMode); persistBoard(next, nextMode, next.title, items); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : "版式切换失败"); }
+  }, [graph, graphMode, items, persistBoard, renderGraph]);
+
   // 热榜点击：弹窗确认后生成
   const pickHot = useCallback((title: string) => {
     setPendingHot(title);
@@ -605,6 +655,7 @@ export default function Home() {
                 [
                   { id: "compare", label: "观点对照" },
                   { id: "roadmap", label: "学习路线" },
+                  { id: "summary", label: "文章摘要" },
                 ] as const
               ).map((m) => (
                 <button
@@ -718,7 +769,9 @@ export default function Home() {
             placeholder={
               mode === "roadmap"
                 ? "输入学习目标或领域，如：我想做出一个能用的 Agent"
-                : "输入有争议的问题，如：年轻人该不该买房"
+                : mode === "summary"
+                  ? "输入主题，先找回答并勾选要总结的文章"
+                  : "输入有争议的问题，如：年轻人该不该买房"
             }
             className="min-w-0 flex-1 rounded-full border border-gray-200 bg-[#fafaf7] py-2 pl-4 pr-3 text-sm outline-none transition focus:border-[#0066ff]/60 focus:bg-white focus:shadow-sm"
             disabled={loading}
@@ -794,51 +847,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* 个人中心：登录后从用户名点开，展示收藏夹和关注的人 */}
-      {showProfile && me.loggedIn && (
-        <div className="shrink-0 border-b border-[#e8e8e3] bg-white px-5 py-3 text-sm">
-          <div className="mb-2 flex items-center justify-between">
-            <div className="text-xs font-medium text-gray-500">个人中心</div>
-            <button onClick={() => setShowProfile(false)} className="text-xs text-gray-400 hover:text-gray-600">收起</button>
-          </div>
-          <div className="grid gap-3 sm:grid-cols-2">
-            {/* 收藏夹 */}
-            <div>
-              <div className="mb-1 text-xs font-medium text-gray-600">📚 我的收藏夹（{favlists.length}）</div>
-              {favlists.length === 0 ? (
-                <div className="text-xs text-gray-400">暂无收藏夹，或收藏夹为空</div>
-              ) : (
-                <div className="flex flex-col gap-1">
-                  {favlists.map((f) => (
-                    <div key={f.urlToken} className="flex items-center justify-between rounded-lg border border-gray-100 px-2.5 py-1.5 hover:border-[#0066ff]/30">
-                      <span className="min-w-0 flex-1 truncate text-xs text-gray-700" title={f.description || f.title}>{f.title}</span>
-                      <button
-                        onClick={() => generateFromFavlist(f.urlToken, f.title)}
-                        disabled={loading || favlistLoading}
-                        className="ml-2 shrink-0 rounded-full border border-[#0066ff]/30 px-2 py-0.5 text-[10px] text-[#0066ff] transition hover:bg-[#f0f5ff] disabled:opacity-50"
-                        title="用收藏夹内容生成学习路线"
-                      >
-                        {favlistLoading ? "读取中…" : "生成路线"}
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-            {/* 关注的人 */}
-            <div>
-              <div className="mb-1 text-xs font-medium text-gray-600">👥 我关注的人（{followeeCount}）</div>
-              {followeeCount === 0 ? (
-                <div className="text-xs text-gray-400">暂无关注，或关注列表为空</div>
-              ) : (
-                <div className="text-xs text-gray-500">
-                  你关注的答主会在地图中高亮显示。提问「观点对照」类问题时，可看到他们的立场分布。
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+      {showProfile && me.loggedIn && <ProfileCenter name={me.name} boards={savedBoards} favlists={favlists} followees={followeeNames} busy={loading} favlistLoading={favlistLoading} activeFavlist={activeFavlist} favlistItems={favlistItems} selectedIds={selectedFavlistIds} onClose={() => setShowProfile(false)} onOpenBoard={openSavedBoard} onDeleteBoard={(id) => setSavedBoards(deleteBoard(localStorage, id))} onOpenFavlist={openFavlist} onToggleItem={(id) => setSelectedFavlistIds((current) => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next; })} onGenerateFavlist={generateFavlistSelection} />}
 
       {/* 引擎设置（可折叠） */}
       {showEngineCfg && (
@@ -982,6 +991,15 @@ export default function Home() {
                   </div>
                 </div>
               )}
+              {/* 画板来源索引与分享：链接只在非编辑手势下打开 */}
+              {graph && <SourceIndex sources={collectKnowledgeSources(graph, items)} />}
+              {graph && <PresentationControls graph={graph} busy={loading} onChange={changePresentation} />}
+              {graph && <SharePanel graph={graph} makePng={async () => {
+                const els = apiRef.current?.getSceneElements() ?? [];
+                const { exportToBlob } = await import("@excalidraw/excalidraw");
+                const blob = await exportToBlob({ elements: els, appState: { exportWithDarkMode: false, exportBackground: true }, files: apiRef.current?.getFiles?.(), exportPadding: 32, getDimensions: (w: number, h: number) => ({ width: w * 2, height: h * 2, scale: 2 }) });
+                return addWatermark(blob);
+              }} />}
               {/* 画板右下角：导出 PNG（Excalidraw Island 风格按钮） */}
               {graph && (
                 <button

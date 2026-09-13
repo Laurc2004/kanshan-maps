@@ -4,6 +4,7 @@ import { extractViewpoints } from "@/lib/viewpoints";
 import { buildRoadmapMessages, parseRoadmapJson } from "@/lib/roadmap";
 import { runHarness, resolveGenerationPath } from "@/lib/harness/executor";
 import { normalizeSearchItem } from "@/lib/harness/sources";
+import { buildSummaryMessages, parseSummaryJson } from "@/lib/summary";
 
 // SSE 流式生成：先推素材（sources）→ 再推图（graph），分步可见
 // mode=viewpoint（观点对照图，默认）/ roadmap（学习路线图）
@@ -50,10 +51,10 @@ export async function POST(req: NextRequest) {
   const q = question.trim();
   const engineId = engine?.id || "builtin";
   const generationPath = resolveGenerationPath(mode);
-  const userMode = mode === "roadmap" ? "roadmap" : "compare";
+  const userMode = mode === "roadmap" ? "roadmap" : mode === "summary" ? "summary" : "compare";
   // 用户自选回答直传（跳过搜索）；缓存键区分，避免污染全量缓存
   const hasPicked = Array.isArray(passedItems) && passedItems.length > 0;
-  const cacheMode = generationPath === "harness" ? userMode : userMode === "roadmap" ? "roadmap" : "viewpoint";
+  const cacheMode = userMode === "summary" ? "summary" : generationPath === "harness" ? userMode : userMode === "roadmap" ? "roadmap" : "viewpoint";
   const engineKey = `${engineId}:${engine?.model ?? ""}:${engine?.baseURL ?? ""}`;
   const cacheKey = `${cacheMode}:${engineKey}:${q.toLowerCase()}${hasPicked ? `:picked${passedItems.length}` : ""}`;
 
@@ -61,7 +62,7 @@ export async function POST(req: NextRequest) {
     async start(controller) {
       const send = (event: string, data: unknown) => controller.enqueue(new TextEncoder().encode(sse(event, data)));
       try {
-        if (generationPath === "harness") {
+        if (generationPath === "harness" && userMode !== "summary") {
           if (!hasPicked) {
             const hit = cache.get(cacheKey);
             if (hit && Date.now() - hit.ts < TTL) {
@@ -160,7 +161,13 @@ export async function POST(req: NextRequest) {
 
         const engineCfg = { id: engineId, baseURL: engine?.baseURL, apiKey: engine?.apiKey, model: engine?.model };
 
-        if (userMode === "roadmap") {
+        if (userMode === "summary") {
+          send("status", { text: `正在总结 ${items.length} 篇知乎内容…` });
+          const raw = await runEngine(engineCfg, buildSummaryMessages(q, items));
+          const graph = parseSummaryJson(raw, q, items);
+          cache.set(cacheKey, { graph, items, ts: Date.now() });
+          send("graph", { graph, mode: "summary", cached: false, sources: items.length });
+        } else if (userMode === "roadmap") {
           send("status", { text: `正在从 ${items.length} 条回答里提炼学习路径…` });
           const raw = await runEngine(engineCfg, buildRoadmapMessages(q, items));
           const graph = parseRoadmapJson(raw, q, items);

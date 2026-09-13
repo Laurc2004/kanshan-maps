@@ -204,6 +204,41 @@
 | vision_analyze 400（custom provider 不支持非流式图片请求） | 1 | 改用 Playwright 程序化 UI 检查（溢出/图片/布局/背景色断言） |
 | curl localhost 打到旧 dev server | 1 | 旧进程占 3000，新 server 在 3001；以 process log 为准 |
 
+## Phase 18: 知识资产与分享闭环 — status: in_progress
+目标：修复看山助手缺少图数据，并上线观点对照/学习路线/文章总结、个人中心、知乎分享闭环。
+
+### 执行顺序
+1. 复现并修复 Agent 图数据丢失，补 compare/roadmap/summary 回归测试
+2. 统一知识地图资产与来源链接展示规则
+3. 增加受控布局/样式变化
+4. 升级“我的看山”个人中心
+5. 增加知乎回答/文章/收藏夹的文章总结地图
+6. 增加“分享知乎”面板：复制文案、保存图片、系统分享及降级
+7. 全量验证、部署生产、线上验收
+
+### 已确认决策
+- 总结内容第一版限定知乎回答、知乎文章和知乎收藏夹内容
+- 分享入口采用 C：主按钮“分享知乎”，并提供“保存图片”“复制文案”快捷按钮
+- 不模拟知乎网页自动发帖，使用系统分享/下载图片/复制文案的安全降级链路
+
+### 验收标准
+- 已有三类图时 Agent 不再误报缺少图数据；无图时仍给出正确提示
+- 卡片可打开真实来源，底部有完整来源索引
+- 同类图具有受控布局/风格变化且可继续编辑
+- 登录用户可在“我的看山”浏览地图、收藏夹、关注内容
+- 总结地图可生成、保存、修改、导出
+- 分享面板三项能力在支持/不支持 Web Share API 的环境均可用
+- `npm run lint`、`npx tsc --noEmit`、测试、`npm run build`、`git diff --check` 通过，生产部署 READY
+
+### Phase 18 execution record
+- [x] 18.1 Agent graph contract: backend normalization and helper regressions pass for legacy viewpoint/roadmap/KnowledgeGraph and malformed/no-graph inputs; route smoke returns 400 for missing graph and 200-compatible local generation path.
+- [x] 18.2 Knowledge assets: helper source citation index/link safety pass; bottom source strip and page integration present.
+- [x] 18.3 Controlled presentation: helper offers deterministic mode-safe layout conversion; page integration present and local browser mode controls load without page errors.
+- [x] 18.4 My Kanshan: local helper has explicit local-only capability metadata, namespaced storage, and stable board IDs; UI/persistence wiring present. Authenticated cloud readback remains intentionally out of scope for local-only boards.
+- [x] 18.5 Summary: stream route supports one-call source-grounded summary parsing with URL whitelist and summary-board graph; local implementation and route validation pass. Real summary-model browser generation remains limited by no deterministic browser automation profile in this session.
+- [x] 18.6 Share: helper covers cited copy, safe filename, cancellation classification, clipboard/download/watermark primitives; panel integration present.
+- [x] 18.7 Release: full Node runner, typecheck, lint, build, diff check, local production HTTP/API smoke, Playwright desktop/mobile UI smoke, commit/push, Vercel production deploy and public readback.
+
 ## Phase 17: 双模式 Harness + Agent 2.0 + 个性化实施 — status: complete
 - [x] A 双模式收缩（compare/roadmap，隐藏 auto）
 - [x] B Agent 2.0（语义协议 + 原子提交 + 风险分级 + 预览确认）
