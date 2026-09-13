@@ -641,6 +641,7 @@ export default function Home() {
             onClick={() => generate()}
             data-role="generate"
             disabled={loading || !question.trim()}
+            title="根据问题和已选回答一键生成看山图"
             className="flex shrink-0 items-center gap-1.5 rounded-full bg-[#0066ff] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#0052cc] disabled:opacity-50"
           >
             {loading ? (

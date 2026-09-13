@@ -89,13 +89,24 @@ function positions(graph: KnowledgeGraph, layout: LayoutKind, tokens: ReturnType
     return boxes;
   }
   if (layout === "radial-map") {
-    const cx = 760, cy = 600, radius = Math.max(680, width * Math.ceil(nodes.length / 2));
+    // 半径按卡片弧长贴合计算：周长需容纳 n 张卡（每张占 width+gap 弧长），避免巨圈
+    const circumferenceNeeded = nodes.length * (width + gap);
+    const radius = Math.max(420, Math.ceil(circumferenceNeeded / (2 * Math.PI)) + width / 2);
+    const cx = radius + width / 2 + 60, cy = radius + height / 2 + 60;
     return nodes.map((_, i) => { const angle = -Math.PI / 2 + Math.PI * 2 * i / Math.max(nodes.length, 1); return { x: cx + Math.cos(angle) * radius - width / 2, y: cy + Math.sin(angle) * radius - height / 2, width, height }; });
   }
   if (layout === "timeline") return nodes.map((_, i) => ({ x: 60 + i * (width + gap), y: 220 + (i % 2) * (height + gap), width, height }));
   if (layout === "swimlane-roadmap") return nodes.map((node, i) => { const slot = groupSlot(graph, node.id, i); return { x: 60 + slot.group * (width + 100 * tokens.spacing), y: 210 + slot.slot * (height + gap), width, height }; });
   if (layout === "cluster-board") return nodes.map((node, i) => { const slot = groupSlot(graph, node.id, i); return { x: 80 + slot.group * (width + 150 * tokens.spacing), y: 210 + slot.slot * (height + gap), width, height }; });
-  return nodes.map((_, i) => ({ x: 600 + (i % 3) * (width + 120 * tokens.spacing), y: 220 + Math.floor(i / 3) * (height + gap), width, height }));
+  if (layout === "evidence-tree") {
+    // 子节点在 root 右侧双列竖排（root 宽 420）
+    const rootRight = 480 + 60;
+    return nodes.map((_, i) => ({ x: rootRight + (i % 2) * (width + 60), y: 210 + Math.floor(i / 2) * (height + 40), width, height }));
+  }
+  // concept-map 默认：有分组用 cluster-board 分簇；无分组用紧凑两列网格（近间距）
+  const hasGroups = graph.groups.length > 0;
+  if (hasGroups) return nodes.map((node, i) => { const slot = groupSlot(graph, node.id, i); return { x: 80 + slot.group * (width + 90 * tokens.spacing), y: 210 + slot.slot * (height + 40), width, height }; });
+  return nodes.map((_, i) => ({ x: 80 + (i % 2) * (width + 60), y: 210 + Math.floor(i / 2) * (height + 40), width, height }));
 }
 
 // 边锚点按两卡相对位置动态选择，避免连线横穿卡片

@@ -358,7 +358,8 @@ export function roadmapToScene(g: RoadmapGraph): El[] {
     lanes.push({ x, y: Y0, w: LANE_W, h: laneH });
 
     els.push(card(x, Y0, LANE_W, laneH, fill, stroke, { angle: rad(si % 2 === 0 ? 0.4 : -0.4) }));
-    els.push({ ...headT, x: x + 18, y: Y0 + 20 });
+    // 注意：block() 返回 { el, height }，必须展开 .el；曾误展开整个对象导致无 type 非法元素 → 整板空白
+    els.push({ ...headT.el, x: x + 18, y: Y0 + 20 });
 
     let ny = Y0 + 20 + headT.height + 10;
     items.forEach((n) => {

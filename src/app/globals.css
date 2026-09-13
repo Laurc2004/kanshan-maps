@@ -31,11 +31,27 @@ body {
 }
 
 /* ── Excalidraw 深度定制：贴合产品、去掉原生痕迹 ── */
-.excalidraw {
+/* Excalidraw 的紫不只在 --color-primary：选中框用 --color-selection，
+   hover 背景用 --color-surface-high（#f1f0ff 淡紫）、品牌态 --color-brand-*、
+   容器色 --color-surface-primary-container 等一整套，必须全换知乎蓝。
+   注意特异性：Excalidraw 自带 index.css 用同特异性 .excalidraw 且在打包后
+   排在我们后面（后定义赢），所以这里用 .excalidraw.excalidraw 加倍压过它。 */
+.excalidraw.excalidraw {
   --color-primary: #0066ff;
   --color-primary-darker: #0052cc;
+  --color-primary-darkest: #0041a3;
   --color-primary-light: #e8f0ff;
-  --color-primary-darker-light: #d8e9ff;
+  --color-primary-light-darker: #d8e9ff;
+  --color-primary-hover: #3385ff;
+  --color-selection: #0066ff;
+  --color-brand-hover: #3385ff;
+  --color-brand-active: #0041a3;
+  --color-on-primary-container: #0041a3;
+  --color-surface-primary-container: #d8e9ff;
+  --color-surface-high: #eef4ff;
+  --color-promo: #0066ff;
+  --color-logo-icon: #0066ff;
+  --color-logo-text: #0041a3;
   --color-gray-100: #1a1a1a;
   --color-gray-40: #868e96;
   --color-gray-50: #757575;
@@ -45,14 +61,13 @@ body {
   --color-border: #e8e8e3;
   --ui-font: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
 }
-/* 选中高亮与交互强调（默认紫 #6965db 系）全部换成知乎蓝 */
+/* 选中高亮与交互强调兜底：内联样式/子作用域里再压一层 */
 .excalidraw .App-menu,
 .excalidraw button,
 .excalidraw .ToolIcon__keybinding,
 .excalidraw .linear-editor {
   --color-primary: #0066ff;
 }
-.excalidraw [style*="6965db"],
 .excalidraw .excalidraw-linkIcon {
   accent-color: #0066ff;
 }
@@ -86,13 +101,14 @@ body {
   display: none !important;
 }
 
-/* 工具栏只留核心工具：隐藏 图片/mermaid(frame)/laser/魔法帧/嵌入帧/锁 */
+/* 工具栏只留核心工具：隐藏 图片/mermaid(frame)/laser/魔法帧/嵌入帧/锁/更多工具入口 */
 .excalidraw [data-testid="toolbar-lock"],
 .excalidraw [data-testid="toolbar-laser"],
 .excalidraw [data-testid="toolbar-laserpointer"],
 .excalidraw [data-testid="toolbar-frame"],
 .excalidraw [data-testid="toolbar-magicframe"],
-.excalidraw [data-testid="toolbar-embeddable"] {
+.excalidraw [data-testid="toolbar-embeddable"],
+.excalidraw .App-toolbar__extra-tools-trigger {
   display: none !important;
 }
 

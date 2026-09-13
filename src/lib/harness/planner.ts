@@ -70,7 +70,7 @@ function pickLayout(intent: IntentKind, explicit?: string): LayoutKind {
     case "roadmap": return "swimlane-roadmap";
     case "timeline": return "timeline";
     case "compare": return "debate-grid";
-    case "concept-map": return "radial-map";
+    case "concept-map": return "cluster-board";
     case "argument-map": return "evidence-tree";
     case "summary-board": return "cluster-board";
   }
@@ -89,7 +89,7 @@ function defaultSynthesis(intent: IntentKind): SynthesisRequirement {
     case "summary-board":
       return { fields: ["topic", "keyPoints", "connections"], requirements: ["主题聚类", "知识点互联"] };
     default: // concept-map
-      return { fields: ["concept", "definition", "relation"], requirements: ["核心概念为中心", "渐进展开"] };
+      return { fields: ["concept", "definition", "relation"], requirements: ["核心概念为中心", "渐进展开", "按主题分组（groups 体现知识子领域）"] };
   }
 }
 

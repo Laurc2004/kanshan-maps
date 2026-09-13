@@ -32,22 +32,22 @@ void describe("fallbackPlan rule-based degradation", () => {
     assert.equal(plan.layout, "debate-grid");
   });
 
-  void it("falls back to concept-map intent / radial-map layout for an ordinary topic", () => {
+  void it("falls back to concept-map intent / cluster-board layout for an ordinary topic", () => {
     const plan = fallbackPlan({ query: "什么是量子计算" });
     assert.equal(plan.intent, "concept-map");
-    assert.equal(plan.layout, "radial-map");
+    assert.equal(plan.layout, "cluster-board");
   });
 
   void it("defaults intent to concept-map when an unknown intent is passed", () => {
     const plan = fallbackPlan({ query: "量子计算", intent: "banana" as PlanInput["intent"] });
     assert.equal(plan.intent, "concept-map");
-    assert.equal(plan.layout, "radial-map");
+    assert.equal(plan.layout, "cluster-board");
   });
 
   void it("falls unknown explicit intent back to concept-map even when query matches another fallback class", () => {
     const plan = fallbackPlan({ query: "如何零基础学习价值投资", intent: "banana" as PlanInput["intent"] });
     assert.equal(plan.intent, "concept-map");
-    assert.equal(plan.layout, "radial-map");
+    assert.equal(plan.layout, "cluster-board");
   });
 
   void it("maps argument-map intent to evidence-tree layout", () => {
@@ -126,7 +126,7 @@ void describe("fallbackPlan invalid value fallback", () => {
 
   void it("falls invalid layout back to radial-map", () => {
     const plan = fallbackPlan({ query: "x", layout: "garbage" as PlanInput["layout"] });
-    assert.equal(plan.layout, "radial-map");
+    assert.equal(plan.layout, "cluster-board");
   });
 
   void it("falls invalid style back to zhihu-blue", () => {
