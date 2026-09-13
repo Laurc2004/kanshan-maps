@@ -124,3 +124,9 @@
 - F6 Agent patch 加固：缺 patch/undefined groupId 友好错误 + ID 白名单注入 prompt（修复 未知分组: undefined / reading 'layout'）
 - F8 路线图空白：scrollToContent 重试 8 次；F9 Excalidraw 紫→知乎蓝（theme=light + CSS 变量）
 - 验证：layouts 15/15、patch 10/10、全量测试、tsc/lint/build 全绿；真实 debate-grid/roadmap 生成通过；087ebb7 已部署生产
+
+## Session 12 — 2026-09-13（Phase 13: 路线图空白根修 + 布局紧凑化）— complete
+- E2E 复现路线图空白：legacy 模式 canvas 九宫格全 0%，无报错；根因是 roadmapToScene 展开 block() 返回值而非 .el（无 type 非法元素炸场景），导出走包围盒所以正常 —— 与用户症状完全吻合
+- 布局：radial-map 半径改弧长贴合（原 8 节点半径 1280px 巨圈）；concept-map→cluster-board 分簇；evidence-tree 显式右列；prompt 强制所有任务 2-4 分组、以问题为导向
+- E2E 验证：路线图 0%→30%+ 有内容、观点图回归 OK；全量测试/tsc/lint/build 绿
+- 27e476d 推送 + 生产部署 Ready；含 globals.css 知乎蓝主题（用户改动一并上线）

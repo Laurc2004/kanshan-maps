@@ -160,12 +160,12 @@
 - [x] F9（用户新增6）Excalidraw 紫色→知乎蓝：theme="light" prop + CSS 变量覆盖（primary 系、选中态、checkbox、swatch）
 - [x] F10（用户新增7）紫色未生效根修：Excalidraw 自带 index.css 用同特异性 .excalidraw 且打包后在我们后面（后定义赢），globals.css 覆盖被打回；改 .excalidraw.excalidraw 加倍特异性压过；补全 --color-selection/--color-surface-high/--color-brand-*/--color-surface-primary-container 等整组紫色变量；删除工具栏「更多工具」入口（App-toolbar__extra-tools-trigger）。实测 CSS 变量全变蓝、紫色像素扫描 0 命中、更多工具按钮 display:none；lint 0 err、build 过
 
-### Phase 13: 路线图页面空白根修 + 智能编排布局紧凑化 — status: in_progress
+### Phase 13: 路线图页面空白根修 + 智能编排布局紧凑化 — status: complete
 背景：F8 重试 scrollToContent 没治本，路线图页面仍空白（导出正常）；观点图正常。radial-map 半径公式 max(680, w*ceil(n/2)) 导致 8 节点半径 1280px 的巨圈，concept-map 又默认选 radial-map，多数问题都变围着圈。
-- [ ] G1 Playwright 真实浏览器复现路线图空白：生成路线图 → 检查 scene 元素注入、canvas 渲染、console 错误、scrollToContent 行为，找到与观点图链路的差异点
-- [ ] G2 按根因修复（不猜）
-- [ ] G3 布局紧凑化：radial-map 半径改为按卡片弧长贴合计算；concept-map 默认布局改 cluster-board（有分组）或紧凑网格（无分组）；间距收敛
-- [ ] G4 验证：E2E 路线图页面可见 + 观点图回归 + layouts 测试 + 全量回归 + 部署
+- [x] G1 E2E 复现：legacy「学习路线」模式九宫格全 0%（auto 正常 30%+），无 console 错误 → 逐层排查 scene 渲染器
+- [x] G2 根因修复：roadmapToScene 里 `els.push({ ...headT, x, y })` 展开了 block() 的 {el,height} 而非 .el，产出无 type 非法元素 → Excalidraw 场景校验失败整板空白（导出走包围盒所以下载正常）。改 ...headT.el；全文件 grep 确认仅此一处；回归测试固化（元素必须全部有 type/id），node --test 动态副本法绕过无后缀 import
+- [x] G3 布局紧凑化：radial-map 半径按卡片弧长贴合（周长容纳 n 卡）；concept-map 默认 cluster-board 分簇/紧凑两列；evidence-tree 补右侧双列显式分支；planner concept-map→cluster-board；synthesis prompt 所有任务强制 2-4 主题分组+标题直接回答问题
+- [x] G4 验证：E2E legacy 路线图 0%→30%/27% 有内容、观点图回归正常；全量测试（layouts 15/15、planner、excalidraw-layout 回归 1/1）、tsc/lint/build 全绿；提交 27e476d 部署生产 Ready，生产 roadmap API 出图正常
 
 ## Errors Encountered
 |-------|---------|------------|
