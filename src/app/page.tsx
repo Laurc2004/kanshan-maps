@@ -59,6 +59,7 @@ export default function Home() {
   const [searching, setSearching] = useState(false); // 找回答独立加载态：不影响画板/生成按钮
   const [showSources, setShowSources] = useState(true);
   const [showEngineCfg, setShowEngineCfg] = useState(false);
+  const [showProfile, setShowProfile] = useState(false);
   const [engine, setEngine] = useState<Engine>({ id: "builtin" });
   const [hotItems, setHotItems] = useState<HotItem[]>([]);
   const [pendingClear, setPendingClear] = useState(false); // 清空画布确认弹窗
@@ -671,16 +672,21 @@ export default function Home() {
               <div className="flex items-center gap-1.5 rounded-full border border-[#0066ff]/20 bg-[#f0f5ff] py-1 pl-1 pr-3">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src="/liukanshan/idle.gif" alt="" className="h-6 w-6" />
-                <span className="text-xs font-medium text-[#0066ff]">
+                <button
+                  onClick={() => setShowProfile((v) => !v)}
+                  className="text-xs font-medium text-[#0066ff] hover:underline"
+                  title="打开个人中心（收藏夹 / 关注的人）"
+                >
                   {me.name ?? "已登录"}
                   {followeeCount > 0 && <span className="ml-1 text-[10px] font-normal text-gray-400">关注{followeeCount}人</span>}
-                </span>
+                </button>
                 <button
                   onClick={() =>
                     fetch("/api/auth/logout", { method: "POST" }).then(() => {
                       setMe({ loggedIn: false });
                       followeesRef.current = new Set();
                       setFolloweeCount(0);
+                      setShowProfile(false);
                     })
                   }
                   className="text-[10px] text-gray-400 hover:text-gray-600"
@@ -784,6 +790,52 @@ export default function Home() {
                 {favlistLoading ? "读取中…" : f.title}
               </button>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* 个人中心：登录后从用户名点开，展示收藏夹和关注的人 */}
+      {showProfile && me.loggedIn && (
+        <div className="shrink-0 border-b border-[#e8e8e3] bg-white px-5 py-3 text-sm">
+          <div className="mb-2 flex items-center justify-between">
+            <div className="text-xs font-medium text-gray-500">个人中心</div>
+            <button onClick={() => setShowProfile(false)} className="text-xs text-gray-400 hover:text-gray-600">收起</button>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {/* 收藏夹 */}
+            <div>
+              <div className="mb-1 text-xs font-medium text-gray-600">📚 我的收藏夹（{favlists.length}）</div>
+              {favlists.length === 0 ? (
+                <div className="text-xs text-gray-400">暂无收藏夹，或收藏夹为空</div>
+              ) : (
+                <div className="flex flex-col gap-1">
+                  {favlists.map((f) => (
+                    <div key={f.urlToken} className="flex items-center justify-between rounded-lg border border-gray-100 px-2.5 py-1.5 hover:border-[#0066ff]/30">
+                      <span className="min-w-0 flex-1 truncate text-xs text-gray-700" title={f.description || f.title}>{f.title}</span>
+                      <button
+                        onClick={() => generateFromFavlist(f.urlToken, f.title)}
+                        disabled={loading || favlistLoading}
+                        className="ml-2 shrink-0 rounded-full border border-[#0066ff]/30 px-2 py-0.5 text-[10px] text-[#0066ff] transition hover:bg-[#f0f5ff] disabled:opacity-50"
+                        title="用收藏夹内容生成学习路线"
+                      >
+                        {favlistLoading ? "读取中…" : "生成路线"}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            {/* 关注的人 */}
+            <div>
+              <div className="mb-1 text-xs font-medium text-gray-600">👥 我关注的人（{followeeCount}）</div>
+              {followeeCount === 0 ? (
+                <div className="text-xs text-gray-400">暂无关注，或关注列表为空</div>
+              ) : (
+                <div className="text-xs text-gray-500">
+                  你关注的答主会在地图中高亮显示。提问「观点对照」类问题时，可看到他们的立场分布。
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}

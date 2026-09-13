@@ -60,11 +60,11 @@ export function normalizeUserMode(value: unknown): UserMode {
   return "compare"; // auto/viewpoint/compare/未知值 → compare
 }
 
+// 成熟单调用链路：compare→观点对照（一次 LLM）、roadmap→学习路线（一次 LLM）
+// Harness 多阶段编排保留给 direct API 调用与实验（explicit intent 才走）
 export function resolveGenerationPath(mode: unknown): GenerationPath {
-  const userMode = normalizeUserMode(mode);
-  // 两种用户模式统一走 Harness（旧 legacy 路径仅保留给直接引用，不再由 UI 触发）
-  void userMode;
-  return "harness";
+  if (mode === "roadmap") return "legacy-roadmap";
+  return "legacy-viewpoint";
 }
 
 function errorEvent(stage: string, error: unknown): HarnessEvent {

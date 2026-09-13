@@ -1,12 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
 import { decodeSession, SESSION_COOKIE } from "@/lib/session";
-import { userFavlistContents } from "@/lib/zhihu";
+import { userFavlistContents, type CollectionContentItem } from "@/lib/zhihu";
 
 // 收藏夹内容（个人学习路线的素材来源）
 // 只取 answer/article/question 三类文字内容，video/pin 跳过
-// 返回结构与 SourceItem 对齐，可直接进生成管线
+// 直接返回 SearchResultItem 结构（大写字段），与 generate(picked) 管线对齐
 const cache = new Map<string, { items: unknown[]; ts: number }>();
 const TTL = 1000 * 60 * 10;
+
+function toSearchResultItem(it: CollectionContentItem, index: number) {
+  return {
+    Title: it.Title ?? "",
+    ContentType: it.ContentType ?? "answer",
+    ContentID: `favlist-${it.Url ?? index}`,
+    ContentText: it.Summary ?? "",
+    Url: it.Url ?? "",
+    VoteUpCount: it.LikeCount ?? 0,
+    AuthorName: it.Author?.Name ?? "",
+    CommentCount: it.CommentCount ?? 0,
+    EditTime: it.CreatedAt ?? 0,
+  };
+}
 
 export async function GET(req: NextRequest) {
   const session = await decodeSession(req.cookies.get(SESSION_COOKIE)?.value);
@@ -27,20 +41,13 @@ export async function GET(req: NextRequest) {
 
   try {
     // 最多翻 2 页（100 条），黑客松场景够用
-    const all: { title: string; url: string; author: string; content: string; voteupCount: number; source: string }[] = [];
+    const all: ReturnType<typeof toSearchResultItem>[] = [];
     let offset = 0;
     for (let page = 0; page < 2; page++) {
       const { items, isEnd } = await userFavlistContents(session.t, urlToken, 50, offset);
       for (const it of items) {
         if (it.ContentType !== "answer" && it.ContentType !== "article" && it.ContentType !== "question") continue;
-        all.push({
-          title: it.Title,
-          url: it.Url,
-          author: it.Author?.Name ?? "",
-          content: it.Summary ?? "",
-          voteupCount: it.LikeCount ?? 0,
-          source: "favlist",
-        });
+        all.push(toSearchResultItem(it, all.length));
       }
       if (isEnd) break;
       offset += 50;
