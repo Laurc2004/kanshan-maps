@@ -205,7 +205,8 @@ test("propagates external abort and terminates with an abort error", async () =>
 
 test("routes only auto mode to the harness and keeps explicit legacy modes compatible", () => {
   assert.equal(resolveGenerationPath("auto"), "harness");
-  assert.equal(resolveGenerationPath("viewpoint"), "legacy-viewpoint");
-  assert.equal(resolveGenerationPath("roadmap"), "legacy-roadmap");
-  assert.equal(resolveGenerationPath(undefined), "legacy-viewpoint");
+  assert.equal(resolveGenerationPath("viewpoint"), "harness");
+  assert.equal(resolveGenerationPath("roadmap"), "harness");
+  assert.equal(resolveGenerationPath("compare"), "harness");
+  assert.equal(resolveGenerationPath(undefined), "harness");
 });

@@ -192,6 +192,64 @@ export function deduplicateDocuments(docs: SourceDocument[]): SourceDocument[] {
   return out;
 }
 
+// ─── 相关性与内容近重复 ────────────────────────────────────────────
+
+const STOP_WORDS = new Set(["的", "了", "吗", "呢", "吧", "是", "有", "在", "和", "与", "或", "及", "对", "怎么", "如何", "什么", "为什么", "哪些", "一个", "还是", "应该", "该不该", "能不能"]);
+// 分割符里含 ] 会破坏字符类，用捕获组构造，避免 heredoc/补丁工具误读
+const TOKEN_SPLIT_RE = new RegExp("[\\s,，。？?！!、：:；;（）()【】《》<>\"'\"\"'\\u005d]+");
+
+/** 查询关键词提取：去掉停用字和标点，保留 2 字以上的连续片段 */
+function queryKeywords(query: string): string[] {
+  return query
+    .split(TOKEN_SPLIT_RE)
+    .map((w) => w.trim())
+    .filter((w) => w.length >= 2 && !STOP_WORDS.has(w))
+    .slice(0, 6);
+}
+
+/**
+ * 相关性过滤：文档标题+正文需命中至少一个查询关键词。
+ * 关键词策略：先按标点/停用词切分；切不出多词时，用「子串滑动匹配」兜底——
+ * 检查文档是否包含查询中任意 ≥2 字的连续片段（先长后短，取首个命中）。
+ * 全部都不命中时原样放行，避免误杀抽象查询。
+ */
+export function filterByRelevance(docs: SourceDocument[], query: string): SourceDocument[] {
+  const keywords = queryKeywords(query);
+  const raw = query.replace(/\s+/g, "");
+  const match = (haystack: string): boolean => {
+    if (keywords.some((k) => haystack.includes(k))) return true;
+    // 滑动窗口兜底：从长到短找查询的连续子串
+    const maxLen = Math.min(6, raw.length);
+    for (let len = maxLen; len >= 2; len--) {
+      for (let i = 0; i + len <= raw.length; i++) {
+        if (haystack.includes(raw.slice(i, i + len))) return true;
+      }
+    }
+    return false;
+  };
+  const hit = docs.filter((d) => match(`${d.title} ${d.text.slice(0, 600)}`));
+  return hit.length > 0 ? hit : docs;
+}
+
+/**
+ * 内容近重复去重：转载内容常见「同开头、不同尾巴」。取正文前 150 字做指纹，
+ * 再对指纹做归一化（去标点空白小写）后比较。
+ */
+export function dedupeByContent(docs: SourceDocument[]): SourceDocument[] {
+  const seen = new Set<string>();
+  const out: SourceDocument[] = [];
+  for (const doc of docs) {
+    const fingerprint = doc.text
+      .replace(/[\s\p{P}\p{S}]+/gu, "")
+      .toLowerCase()
+      .slice(0, 150);
+    if (fingerprint.length >= 100 && seen.has(fingerprint)) continue;
+    if (fingerprint.length >= 100) seen.add(fingerprint);
+    out.push(doc);
+  }
+  return out;
+}
+
 // ─── 内置 Adapter 实现 ─────────────────────────────────────────────
 
 const PICKED_ADAPTER: SourceAdapter = {
@@ -438,8 +496,10 @@ export async function collectSources(
   const documents = results.flatMap((r) => r.documents);
   const errors = results.flatMap((r) => r.errors);
 
-  // 去重 → 裁剪文本 → 过滤空内容 → 按 docs 预算上限截断
+  // 去重 → 相关性过滤 → 内容近重复去重 → 裁剪文本 → 过滤空内容 → 按 docs 预算上限截断
   let deduped = deduplicateDocuments(documents);
+  deduped = filterByRelevance(deduped, input.query);
+  deduped = dedupeByContent(deduped);
   deduped = deduped
     .map((d) => ({ ...d, text: clampText(d.text, resolvedBudget.charsPerDoc) }))
     .filter((d) => d.text.trim().length > 0);

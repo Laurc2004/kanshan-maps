@@ -369,3 +369,36 @@ void describe("knowledge URL safety", () => {
     assert.equal(document.url, "https://api.zhihu.com/km-indep-home/hackathon/v2/knowledge/work%20id");
   });
 });
+
+void describe("relevance filter & content dedup", () => {
+  void it("filterByRelevance drops documents missing all query keywords", async () => {
+    const { filterByRelevance } = await import("./sources.ts");
+    const docs = [
+      { id: "a", title: "考研的利弊分析", url: "u1", text: "考研可以提升学历", author: "", sourceType: "zhihu-search" as const, score: 0, publishedAt: "", metadata: {} },
+      { id: "b", title: "红烧肉的做法", url: "u2", text: "先炒糖色再下肉", author: "", sourceType: "zhihu-search" as const, score: 0, publishedAt: "", metadata: {} },
+    ];
+    const out = filterByRelevance(docs, "考研还是就业");
+    assert.deepEqual(out.map((d) => d.id), ["a"]);
+  });
+
+  void it("filterByRelevance passes everything when nothing matches (abstract query)", async () => {
+    const { filterByRelevance } = await import("./sources.ts");
+    const docs = [
+      { id: "a", title: "随便一篇", url: "u1", text: "内容", author: "", sourceType: "zhihu-search" as const, score: 0, publishedAt: "", metadata: {} },
+    ];
+    const out = filterByRelevance(docs, "xyzzy不存在词");
+    assert.equal(out.length, 1);
+  });
+
+  void it("dedupeByContent drops reposts with same opening text", async () => {
+    const { dedupeByContent } = await import("./sources.ts");
+    const body = "A".repeat(150);
+    const docs = [
+      { id: "a", title: "原创", url: "u1", text: body + " 原文结尾", author: "甲", sourceType: "zhihu-search" as const, score: 0, publishedAt: "", metadata: {} },
+      { id: "b", title: "转载", url: "u2", text: body + " 转载结尾", author: "乙", sourceType: "global-search" as const, score: 0, publishedAt: "", metadata: {} },
+      { id: "c", title: "无关", url: "u3", text: "B".repeat(150), author: "丙", sourceType: "zhihu-search" as const, score: 0, publishedAt: "", metadata: {} },
+    ];
+    const out = dedupeByContent(docs);
+    assert.deepEqual(out.map((d) => d.id), ["a", "c"]);
+  });
+});

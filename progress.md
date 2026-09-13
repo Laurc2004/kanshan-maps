@@ -146,3 +146,13 @@
 - 布局：radial-map 半径改弧长贴合（原 8 节点半径 1280px 巨圈）；concept-map→cluster-board 分簇；evidence-tree 显式右列；prompt 强制所有任务 2-4 分组、以问题为导向
 - E2E 验证：路线图 0%→30%+ 有内容、观点图回归 OK；全量测试/tsc/lint/build 绿
 - 27e476d 推送 + 生产部署 Ready；含 globals.css 知乎蓝主题（用户改动一并上线）
+
+## 2026-09-13 Phase A~E 实施完成
+
+- Phase A（ff411a2）：用户入口收缩为观点对照/学习路线双模式，Planner 意图专用化，旧 auto/viewpoint 兼容映射
+- Phase B（7b9d5f8）：Agent 2.0 — GraphChange 语义协议、规则优先 router、answer/clarify、原子提交、风险分级、preview+commit 两段式（src/lib/agent/）
+- Phase C（1f9fc19）：文字/样式类修改保留用户坐标局部重渲染，结构类才全量重排
+- Phase D（4752467）：收藏夹→学习路线。/api/me/favlists + /api/me/favlist-contents（token 尾段隔离缓存），roadmap 模式显示收藏夹入口
+- Phase A2（c73c807）：来源预处理 — 相关性过滤（关键词+滑动窗口兜底）、内容指纹转载去重
+- 验证：129 tests / 123 pass / 0 fail / 6 skip（既有）；lint 0 error；tsc clean；next build 通过
+- E2E 冒烟（本地 dev）：/ 200；/api/auth/me 正常；favlists 401 未登录拦截正常；Agent answer 路径走模型成功；emphasize 规则路径 8ms 直改；remove 高风险返回 preview+planId；commit 执行后节点被删除；重复 commit 被拒

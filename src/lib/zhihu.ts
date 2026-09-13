@@ -144,3 +144,38 @@ export async function userFollowees(oauthToken: string, limit = 50, offset = 0) 
   if (json.Code !== 0) throw new Error(`followees failed: ${json.Code} ${json.Message}`);
   return json.Data?.Items ?? [];
 }
+
+// —— 收藏夹（Phase D：收藏夹→学习路线）——
+export type FavlistRecord = { UrlToken: number; Url: string; Title: string; Description: string; IsPublic: boolean };
+export type CollectionContentItem = {
+  ContentType: string; // answer | article | zvideo | pin | question
+  Url: string;
+  CreatedAt: number;
+  FavTime: number;
+  LikeCount: number;
+  CommentCount: number;
+  FavoriteCount: number;
+  Title: string;
+  Summary: string;
+  Author?: { Name: string };
+};
+
+export async function userFavlists(oauthToken: string, limit = 50): Promise<FavlistRecord[]> {
+  const params = new URLSearchParams({ Limit: String(Math.min(limit, 50)) });
+  const res = await fetch(`${BASE}/api/v1/user/favlists?${params}`, { headers: headers(oauthToken) });
+  const json = await res.json();
+  if (json.Code !== 0) throw new Error(`favlists failed: ${json.Code} ${json.Message}`);
+  return json.Data?.Items ?? [];
+}
+
+export async function userFavlistContents(oauthToken: string, urlToken: number, limit = 50, offset = 0): Promise<{ items: CollectionContentItem[]; isEnd: boolean }> {
+  const params = new URLSearchParams({
+    FavlistUrlToken: String(urlToken),
+    Limit: String(Math.min(limit, 50)),
+    Offset: String(offset),
+  });
+  const res = await fetch(`${BASE}/api/v1/user/favlist_contents?${params}`, { headers: headers(oauthToken) });
+  const json = await res.json();
+  if (json.Code !== 0) throw new Error(`favlist_contents failed: ${json.Code} ${json.Message}`);
+  return { items: json.Data?.Items ?? [], isEnd: Boolean(json.Data?.Paging?.IsEnd ?? true) };
+}
