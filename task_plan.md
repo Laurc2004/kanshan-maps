@@ -147,15 +147,17 @@
 - [x] T2 编排步骤在看山助手展示：AgentPanel 增加 progress prop（阶段+文档数+错误信息），生成期间在面板顶部显示分步进度（规划→检索→整理素材→综合→布局→验证→完成），出错时错误就地显示在助手面板（复用 harnessStageLabel），成功后进度卡片收起
 - [x] T3 验证：synthesizer/AgentPanel 相关测试 + 全量回归（tsc/lint/测试）+ 本地生成真实问题无 title 空失败 + 提交部署
 
-### Phase 12: 找回答独立性 + 编排详情展示 + 布局逻辑性 + Agent patch 加固 — status: in_progress
+### Phase 12: 找回答独立性 + 编排详情展示 + 布局逻辑性 + Agent patch 加固 + 主题/视口修复 — status: complete
 背景：用户反馈 4 项：①找回答不应影响画板/按钮 ②编排过程要看输入输出 ③智能编排图线交叉无逻辑 ④Agent 改图报 未知分组: undefined / reading 'layout'。
 - [x] F1 找回答独立 searching 态：不再 set loading，画板/一键看山/输入框不变，只找回答按钮自己转圈
 - [x] F2 编排步骤详情：HarnessStep 带 input/output 摘要（问题/关键词/素材数/图类型/节点数/标题），完成卡片保留 4 秒
-- [ ] F3 debate-grid 左右对立布局重写：按 groups 分阵营（左/右/共识中轴下方）、组标签、中轴分隔线、边锚点按相对位置动态选择、跨组边限流
-- [ ] F4 radial-map 等布局边限流 + 通用锚点选择（消除穿越卡片的线）
-- [ ] F5 synthesizer prompt：compare 场景要求输出阵营 groups（支持方/反对方/共识）并给节点分组
-- [ ] F6 patch.ts 加固：set_presentation/update_group 缺 patch 报友好错误；groupId/group undefined 报"分组 ID 缺失"；agent prompt 注入节点/分组真实 ID 白名单
-- [ ] F7 验证：patch 测试（undefined groupId、缺 patch、白名单）+ layouts 测试（对立布局语义断言：阵营分侧、无交叉锚点）+ 全量回归 + 真实生成对比 + 提交部署
+- [x] F3 debate-grid 左右对立布局重写：组0=左侧、组1=右侧、其余/无组=下方共识区；阵营标签+虚线中轴分隔；边锚点按相对位置动态选择（水平/垂直主轴，消除穿卡直线）；每节点最多 1 出 1 入限流
+- [x] F4 通用锚点+限流对所有布局生效（layouts.ts anchors()）
+- [x] F5 synthesizer prompt：compare 必须输出对立阵营+共识分组（每组≤4节点、全部节点归属唯一分组、边尽量少）；实测 debate-grid 输出 支持考研3/支持就业3/共识2、8节点全有分组、4条边
+- [x] F6 patch.ts 加固：缺 patch → "需要 patch 对象"；groupId undefined → "分组 ID 缺失（用 graph.groups 真实 id）"；agent prompt 注入节点/分组 ID 白名单；测试 10/10
+- [x] F7 验证：layouts 15/15（含 debate-grid 阵营分侧+限流断言）、patch 10/10、全量回归、tsc/lint/build 全过；真实生成 debate-grid 三阵营 + roadmap 12 节点全通过；提交 087ebb7 部署生产
+- [x] F8（用户新增5）路线图页面空白修复：scrollToContent 重试 8 次（大图一次适配不生效导致内容在视口外，导出按包围盒所以正常）
+- [x] F9（用户新增6）Excalidraw 紫色→知乎蓝：theme="light" prop + CSS 变量覆盖（primary 系、选中态、checkbox、swatch）
 
 ## Errors Encountered
 |-------|---------|------------|

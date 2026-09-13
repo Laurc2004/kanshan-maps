@@ -116,3 +116,11 @@
 - 根因链：title 回退只是表层；curl 探测 builtin 模型发现 system prompt 无 schema 时模型自创 schema.org JSON（nodes/title 为空）→ 显式 schema prompt 修复
 - AgentPanel 新增 HarnessProgress 卡片：分步 ✓ 列表（规划→检索→整理素材→综合→布局→验证）+ 出错时红色卡片就地显示错误
 - 验证：synthesizer 5/5、全量回归、tsc、lint 0 错、build 过；本地 SSE 真实问题全链路 8 事件出图（9 节点/8 边/10 引用）；生产部署 d25d937 后 SSE 实测 graph 事件正常（标题正常）
+
+## Session 11 — 2026-09-13（Phase 12: 六项反馈修复）— complete
+- F1 找回答独立 searching 态（不动 loading，画板/生成按钮不变）；F2 编排步骤带输入/输出摘要展示在看山助手
+- F3/F4 布局逻辑性重做：debate-grid 左右对立+共识区+阵营标签+中轴虚线；全部布局边锚点动态选择+每节点1出1入限流（消除蜘蛛网）
+- F5 compare prompt 强制阵营分组（实测：支持考研3/支持就业3/共识2，8节点全分组，4边）
+- F6 Agent patch 加固：缺 patch/undefined groupId 友好错误 + ID 白名单注入 prompt（修复 未知分组: undefined / reading 'layout'）
+- F8 路线图空白：scrollToContent 重试 8 次；F9 Excalidraw 紫→知乎蓝（theme=light + CSS 变量）
+- 验证：layouts 15/15、patch 10/10、全量测试、tsc/lint/build 全绿；真实 debate-grid/roadmap 生成通过；087ebb7 已部署生产
