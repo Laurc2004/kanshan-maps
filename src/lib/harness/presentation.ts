@@ -35,8 +35,9 @@ const LAYOUTS = new Set<LayoutKind>(["debate-grid", "radial-map", "timeline", "s
 const clampScale = (value: number | undefined) => Number.isFinite(value) ? Math.min(2, Math.max(0.6, value!)) : 1;
 
 export function resolvePresentation(plan: Pick<RunPlan, "layout" | "style" | "presentation">, graph?: Pick<KnowledgeGraph, "kind" | "presentation">): PresentationSpec {
-  const candidate = plan.presentation ?? graph?.presentation ?? DEFAULT;
-  const graphFallback = graph?.presentation ?? DEFAULT;
+  const fallback = { ...DEFAULT, palette: plan.style };
+  const candidate = plan.presentation ?? graph?.presentation ?? fallback;
+  const graphFallback = graph?.presentation ?? fallback;
   const layout = candidate.layout ?? plan.layout ?? graph?.kind;
   return {
     palette: candidate.palette ?? graphFallback.palette ?? plan.style,

@@ -93,3 +93,14 @@ test("node IDs remain unique for sanitized and truncated source IDs", () => {
   const elementIds = scene.map((element) => element.id as string);
   assert.equal(new Set(elementIds).size, elementIds.length);
 });
+
+test("evidence-tree connects its root to every child and places children to the right", () => {
+  const scene = knowledgeGraphToScene(graph("evidence-tree"));
+  const root = scene.find((element) => element.id === "evidence-root") as { x: number; y: number; width: number; height: number };
+  assert.ok(root);
+  const children = scene.filter((element) => element.type === "rectangle") as Array<{ id: string; x: number; y: number; width: number; height: number; customData: { nodeId: string } }>;
+  assert.equal(children.length, 6);
+  assert.ok(children.every((child) => child.x > root.x + root.width));
+  assert.equal(scene.filter((element) => element.type === "arrow" && element.startNodeId === "evidence-root").length, children.length);
+  for (const child of children) assert.ok(scene.some((element) => element.type === "arrow" && element.startNodeId === "evidence-root" && element.endNodeId === child.customData.nodeId));
+});

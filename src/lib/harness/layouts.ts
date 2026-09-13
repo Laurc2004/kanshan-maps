@@ -73,7 +73,7 @@ function positions(graph: KnowledgeGraph, layout: LayoutKind, tokens: ReturnType
   if (layout === "timeline") return nodes.map((_, i) => ({ x: 60 + i * (width + gap), y: 220 + (i % 2) * (height + gap), width, height }));
   if (layout === "swimlane-roadmap") return nodes.map((node, i) => { const slot = groupSlot(graph, node.id, i); return { x: 60 + slot.group * (width + 100 * tokens.spacing), y: 210 + slot.slot * (height + gap), width, height }; });
   if (layout === "cluster-board") return nodes.map((node, i) => { const slot = groupSlot(graph, node.id, i); return { x: 80 + slot.group * (width + 150 * tokens.spacing), y: 210 + slot.slot * (height + gap), width, height }; });
-  return nodes.map((_, i) => ({ x: 600 + (i % 2) * (width + 120 * tokens.spacing), y: 220 + Math.floor(i / 2) * (height + gap), width, height }));
+  return nodes.map((_, i) => ({ x: 600 + (i % 3) * (width + 120 * tokens.spacing), y: 220 + Math.floor(i / 3) * (height + gap), width, height }));
 }
 function render(graph: KnowledgeGraph, layout: LayoutKind): SceneElement[] {
   const spec = resolvePresentation({ layout, style: graph.presentation.palette, presentation: graph.presentation }, graph);
@@ -84,6 +84,10 @@ function render(graph: KnowledgeGraph, layout: LayoutKind): SceneElement[] {
   if (layout === "evidence-tree") {
     const root = { x: 60, y: 260, width: 420, height: 130 };
     elements.unshift({ ...base("evidence-root", "ellipse", root, tokens), backgroundColor: tokens.palette.accentFill, strokeColor: tokens.palette.accentStroke }, text("evidence-root-text", 90, 305, wrap(graph.title, tokens.keyFindingSize, 360, 2), tokens.keyFindingSize, tokens.palette.accentStroke, 360, tokens));
+    graph.nodes.slice(0, 24).forEach((node, i) => {
+      const child = boxes[i];
+      elements.push(arrow(`evidence-root-edge-${i}`, { x: root.x + root.width, y: root.y + root.height / 2 }, { x: child.x, y: child.y + child.height / 2 }, "evidence-root", node.id, tokens));
+    });
   }
   const seenEdges = new Map<string, number>();
   for (const edge of graph.edges) {

@@ -28,3 +28,8 @@ test("presentation output is deterministic", () => {
   const value = plan({ palette: "nature-notes", density: "compact", stroke: "sketch", hierarchy: { title: 0.9, keyFinding: 1, evidence: 1.1 } });
   assert.deepEqual(resolvePresentation(value, graph()), resolvePresentation(value, graph()));
 });
+
+test("RunPlan.style supplies the palette when plan presentation and graph presentation are absent", () => {
+  const value = { ...plan(undefined), style: "poster-bold" as const, presentation: undefined };
+  assert.equal(resolvePresentation(value).palette, "poster-bold");
+});
