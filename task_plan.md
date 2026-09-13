@@ -160,7 +160,7 @@
 - [x] F9（用户新增6）Excalidraw 紫色→知乎蓝：theme="light" prop + CSS 变量覆盖（primary 系、选中态、checkbox、swatch）
 - [x] F10（用户新增7）紫色未生效根修：Excalidraw 自带 index.css 用同特异性 .excalidraw 且打包后在我们后面（后定义赢），globals.css 覆盖被打回；改 .excalidraw.excalidraw 加倍特异性压过；补全 --color-selection/--color-surface-high/--color-brand-*/--color-surface-primary-container 等整组紫色变量；删除工具栏「更多工具」入口（App-toolbar__extra-tools-trigger）。实测 CSS 变量全变蓝、紫色像素扫描 0 命中、更多工具按钮 display:none；lint 0 err、build 过
 
-### Phase 14: 智能编排提速 + 出图质量/链接修复 — status: in_progress
+### Phase 14: 智能编排提速 + 出图质量/链接修复 — status: complete
 背景：用户反馈智能编排（auto/Harness）两大问题：①等待太久，要求流式出图 ②产出图大量无意义节点、样式难看、节点链接点不动。
 根因（已定位）：
 - 慢：search 10s → synthesize 单次非流式模型调用（12 文档 × 8000 字 ≈ 96KB 提示，60-90s）→ 一次性出整图；budget 上限太肥；OpenAI 客户端 timeout 90s。

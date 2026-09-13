@@ -134,7 +134,7 @@
 - 修复实施中两 bug：骨架顶层 citations 空导致节点引用被校验清空（改从节点 id 推导）；pruneFillerNodes 保底条件写反
 - 验证：104/104 测试（新增 4 项：两阶段事件顺序/骨架留空详情补齐/凑数裁剪/骨架 prompt 硬约束）、tsc、lint 0 错、build 全路由、本地 SSE 实测"考研还是就业"（骨架 8 节点先到 desc 0/8 → 详情 8/8；8 卡全带真实知乎 URL + ↗ 原文行、零超宽文本）
 - 坑：工具回显打码 apiKey:string → *** 是显示层行为，文件完好，勿当 bug 修
-- 待办：commit + push + Vercel 生产部署
+- 待办（已完成）：commit 90ff8ec 已推送，生产部署后实测 SSE 事件链完整（planning→searching→sources→synthesizing→graph-skeleton→synthesizing→graph-detail→laying_out→validating→graph→done），首页 200
 
 ## Session 12 — 2026-09-13（Phase 13: 路线图空白根修 + 布局紧凑化）— complete
 - E2E 复现路线图空白：legacy 模式 canvas 九宫格全 0%，无报错；根因是 roadmapToScene 展开 block() 返回值而非 .el（无 type 非法元素炸场景），导出走包围盒所以正常 —— 与用户症状完全吻合
