@@ -62,6 +62,7 @@ function abortError(signal?: AbortSignal): Error | undefined {
 }
 
 function validateGraph(graph: KnowledgeGraph): void {
+  // title 已在 parseKnowledgeGraph 回退补齐，这里只防真空白
   if (!graph.title.trim()) throw new Error("KnowledgeGraph title must not be empty");
   if (graph.nodes.length === 0) throw new Error("KnowledgeGraph nodes must not be empty");
 }

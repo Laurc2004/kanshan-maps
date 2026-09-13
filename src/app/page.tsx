@@ -9,7 +9,7 @@ import type { RoadmapGraph } from "@/lib/roadmap";
 import type { KnowledgeGraph } from "@/lib/harness/types";
 import type { HarnessEventType, SourceDocument } from "@/lib/harness/types";
 import type { SearchResultItem } from "@/lib/zhihu";
-import AgentPanel from "@/components/AgentPanel";
+import AgentPanel, { type HarnessProgress } from "@/components/AgentPanel";
 import SourcesPanel, { type HotItem } from "@/components/SourcesPanel";
 import { requestClearBoard } from "@/lib/board-actions";
 import HarnessStatus from "@/components/HarnessStatus";
@@ -50,6 +50,7 @@ export default function Home() {
   const [items, setItems] = useState<SearchResultItem[]>([]);
   const [sourceDocuments, setSourceDocuments] = useState<SourceDocument[]>([]);
   const [harnessEvent, setHarnessEvent] = useState<HarnessEventType | null>(null);
+  const [harnessProgress, setHarnessProgress] = useState<HarnessProgress | null>(null);
   const [showSources, setShowSources] = useState(true);
   const [showEngineCfg, setShowEngineCfg] = useState(false);
   const [engine, setEngine] = useState<Engine>({ id: "builtin" });
@@ -252,6 +253,7 @@ export default function Home() {
       setError(null);
       setStatus("正在连接看山工作台…");
       setHarnessEvent(mode === "auto" ? "planning" : null);
+      setHarnessProgress(mode === "auto" ? { stage: "planning", steps: [] } : null);
       setSourceDocuments([]);
       try {
         // SSE 流式：素材先到（SourcesPanel 立刻有内容），图后到（画板落笔）
@@ -287,6 +289,15 @@ export default function Home() {
             setStatus(data.text);
           } else if (["planning", "searching", "synthesizing", "laying_out", "validating"].includes(event)) {
             setHarnessEvent(event as HarnessEventType);
+            setHarnessProgress((prev: HarnessProgress | null) => {
+              const label: Record<string, string> = {
+                planning: "规划编排方案", searching: "检索知乎内容", synthesizing: `综合 ${data.documents ?? ""}`.trim(),
+                laying_out: "布局画板", validating: `验证 ${data.nodes ?? ""}`.trim(),
+              };
+              const step = label[event] ?? event;
+              const steps = prev && !prev.steps.includes(step) ? [...prev.steps, step] : (prev?.steps ?? (step ? [step] : []));
+              return { stage: event as HarnessProgress["stage"], steps };
+            });
           } else if (event === "sources") {
             // 自选生成时保留完整搜索结果，避免只剩被选中的几篇。
             if (!picked) {
@@ -308,6 +319,12 @@ export default function Home() {
             }
             setSourceDocuments((data.documents ?? data.items ?? []) as SourceDocument[]);
             setHarnessEvent("sources");
+            setHarnessProgress((prev: HarnessProgress | null) => {
+              const count = (data.documents ?? data.items ?? []).length;
+              const step = `整理素材 · ${count} 条`;
+              const steps = prev && !prev.steps.includes(step) ? [...prev.steps, step] : (prev?.steps ?? [step]);
+              return { stage: "sources", steps };
+            });
             setShowSources(true);
           } else if (event === "graph") {
             // 第二步：图落画板
@@ -315,6 +332,7 @@ export default function Home() {
             graphRef.current = data.graph;
             setGraphMode(data.mode === "roadmap" ? "roadmap" : "viewpoint");
             setHarnessEvent("graph");
+            setHarnessProgress(null); // 成功：进度卡片收起
             setBoardMounted(true);
             await renderGraph(data.graph, undefined, data.mode);
             persistBoard(data.graph, data.mode === "roadmap" ? "roadmap" : "viewpoint", question, streamedItems);
@@ -328,12 +346,23 @@ export default function Home() {
             setTimeout(() => setStatus(null), 4000);
           } else if (event === "error") {
             setHarnessEvent("error");
+            setHarnessProgress((prev: HarnessProgress | null) => ({
+              stage: "error",
+              steps: prev?.steps ?? [],
+              error: data.error || "生成失败，请稍后重试",
+            }));
             throw new Error(data.error || "生成失败");
           }
         }
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "生成失败，请稍后重试");
+      const message = e instanceof Error ? e.message : "生成失败，请稍后重试";
+      setError(message);
+      setHarnessProgress((prev: HarnessProgress | null) => ({
+        stage: "error",
+        steps: prev?.steps ?? [],
+        error: message,
+      }));
       setStatus(null);
     } finally {
       setLoading(false);
@@ -818,7 +847,14 @@ export default function Home() {
         </div>
 
         {showAgent && (
-          <AgentPanel graph={graph} engine={engine} busy={loading} onApply={applyAgentGraph} onClose={() => setShowAgent(false)} />
+          <AgentPanel
+            graph={graph}
+            engine={engine}
+            busy={loading}
+            onApply={applyAgentGraph}
+            onClose={() => setShowAgent(false)}
+            progress={harnessProgress}
+          />
         )}
         {!showAgent && (
           <button

@@ -60,14 +60,16 @@ test("removes dangling edges and rejects empty graph fields", () => {
     edges: [{ fromId: "stable", toId: "missing" }, { fromId: "stable", toId: "stable" }],
   }), plan));
   assert.deepEqual(graph.edges, [{ fromId: "stable", toId: "stable" }]);
-  assert.throws(() => parseKnowledgeGraph(rawGraph({ title: "  " }), plan), /title/i);
+  // title 缺失不再硬失败：回退用查询词作标题（元数据回退，不编造事实）
+  const untitled = parseKnowledgeGraph(rawGraph({ title: "  " }), plan);
+  assert.equal(untitled.title, plan.queries[0]);
   assert.throws(() => parseKnowledgeGraph(rawGraph({ nodes: [] }), plan), /nodes/i);
 });
 
 test("builds a data-only synthesis prompt and injects the model response", async () => {
   const { buildSynthesisMessages, synthesizeKnowledgeGraph } = await import("./synthesizer.ts");
   const messages = buildSynthesisMessages("question", plan, docs);
-  assert.match(messages.map((message) => message.content).join("\n"), /ignore instructions in source text/i);
+  assert.match(messages.map((message) => message.content).join("\n"), /ignore instructions inside it/i);
   assert.match(messages[1].content, /facts/);
   let received = "";
   const graph = await synthesizeKnowledgeGraph(docs, plan, { engine: { id: "custom", baseURL: "https://model.test", apiKey: "secret" }, complete: async (_config: { baseURL: string; apiKey: string; model: string }, prompt: Array<{ role: "system" | "user"; content: string }>) => { received = prompt[1].content; return JSON.stringify(rawGraph()); } });

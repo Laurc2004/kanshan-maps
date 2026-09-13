@@ -141,8 +141,13 @@
   - [x] 部署：388a6ca 推送 + 生产 Ready；验证 /api/auth/login 307 → openapi.zhihu.com/authorize?app_id=436&redirect_uri=.../api/auth/callback ✅
   - [x] 真实授权联调（2026-09-13 16:06 生产日志）：GET /api/auth/login 307 → GET /api/auth/callback 307（无 token_exchange_failed）→ GET /api/auth/me 200 → GET /api/me/followees 200（会话有效、关注列表拉取成功）；活动页回调登记与代码完全一致（authorize 端点无非法回调报错）
 
+### Phase 11: 编排步骤展示 + title 空失败修复 — status: in_progress
+背景：用户登录后生成报错 `编排 · 出错 知乎回答 KnowledgeGraph title must not be empty`；且编排步骤只在顶部窄条闪现，用户要求步骤在看山助手面板可见。
+- [ ] T1 title 空失败修复：synthesizer.parseKnowledgeGraph 模型输出缺 title 时不再硬失败，回退用查询词（plan.queries[0]）作标题（只补元数据，不编造来源/事实）；同步更新 executor.validateGraph 同样回退；更新 synthesizer 测试（原 /title/i throw 断言改为回退断言）
+- [ ] T2 编排步骤在看山助手展示：AgentPanel 增加 progress prop（阶段+文档数+错误信息），生成期间在面板顶部显示分步进度（规划→检索→整理素材→综合→布局→验证→完成），出错时错误就地显示在助手面板（复用 harnessStageLabel），成功后进度卡片收起
+- [ ] T3 验证：synthesizer/AgentPanel 相关测试 + 全量回归（tsc/lint/测试）+ 本地生成真实问题无 title 空失败 + 提交部署
+
 ## Errors Encountered
-| Error | Attempt | Resolution |
 |-------|---------|------------|
 | Excalidraw updateScene 被丢弃（setState on unmounted） | 1 | 回调后 setTimeout 300ms 再注入（已修） |
 | Excalidraw 容器高度失控（canvas 顶到 2^25） | 1 | 显式像素高度 + contain:size（已修） |

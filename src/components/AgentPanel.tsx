@@ -15,6 +15,13 @@ export type ChatMsg = {
   ts: number;
 };
 
+// 看山助手面板里的编排进度（阶段 + 已完成步骤 + 出错信息）
+export type HarnessProgress = {
+  stage: "planning" | "searching" | "sources" | "synthesizing" | "laying_out" | "validating" | "graph" | "error";
+  steps: string[]; // 逐步累积的中文步骤描述
+  error?: string; // stage=error 时的失败原因
+};
+
 // 右栏：AI Agent 连续对话面板
 export default function AgentPanel({
   graph,
@@ -22,12 +29,14 @@ export default function AgentPanel({
   busy,
   onApply,
   onClose,
+  progress,
 }: {
   graph: AgentGraph | null;
   engine: { id: string; baseURL?: string; apiKey?: string; model?: string };
   busy: boolean; // 外层正在生成图时禁用
   onApply: (g: AgentGraph) => void;
   onClose: () => void;
+  progress?: HarnessProgress | null;
 }) {
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState("");
@@ -106,6 +115,44 @@ export default function AgentPanel({
       </div>
 
       <div className="thin-scroll flex-1 overflow-y-auto p-3">
+        {progress && (
+          <div
+            className={`mb-3 rounded-2xl border px-3 py-2.5 text-xs ${
+              progress.stage === "error"
+                ? "border-red-200 bg-red-50"
+                : "border-[#c7d8fe] bg-[#f0f5ff]"
+            }`}
+            role="status"
+            aria-label={progress.stage === "error" ? "编排出错" : "编排进行中"}
+          >
+            <div className="flex items-center gap-2">
+              {progress.stage === "error" ? (
+                <span className="text-sm">⚠️</span>
+              ) : (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src="/liukanshan/working.gif" alt="生成中" className="h-5 w-5" />
+              )}
+              <span className={`font-medium ${progress.stage === "error" ? "text-red-600" : "text-[#0066ff]"}`}>
+                {progress.stage === "error" ? "编排失败" : "正在编排"}
+              </span>
+            </div>
+            {progress.steps.length > 0 && (
+              <ul className="mt-2 space-y-1 text-[11px] leading-4 text-gray-600">
+                {progress.steps.map((s, i) => (
+                  <li key={i} className="flex items-start gap-1.5">
+                    <span className={progress.stage === "error" && i === progress.steps.length - 1 ? "text-red-500" : "text-emerald-500"}>
+                      {progress.stage === "error" && i === progress.steps.length - 1 ? "✗" : "✓"}
+                    </span>
+                    <span>{s}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {progress.stage === "error" && progress.error && (
+              <p className="mt-2 rounded-lg bg-white/70 px-2 py-1.5 text-[11px] leading-4 text-red-600">{progress.error}</p>
+            )}
+          </div>
+        )}
         {messages.length === 0 && (
           <div className="flex flex-col items-center gap-3 pt-10 text-center">
             {/* eslint-disable-next-line @next/next/no-img-element */}
