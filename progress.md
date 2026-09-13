@@ -156,3 +156,13 @@
 - Phase A2（c73c807）：来源预处理 — 相关性过滤（关键词+滑动窗口兜底）、内容指纹转载去重
 - 验证：129 tests / 123 pass / 0 fail / 6 skip（既有）；lint 0 error；tsc clean；next build 通过
 - E2E 冒烟（本地 dev）：/ 200；/api/auth/me 正常；favlists 401 未登录拦截正常；Agent answer 路径走模型成功；emphasize 规则路径 8ms 直改；remove 高风险返回 preview+planId；commit 执行后节点被删除；重复 commit 被拒
+
+## 2026-09-13 修复：回退到成熟单调用链路 + 收藏夹 bug 修复 + 个人中心
+
+- 问题1：Phase A 把 compare/roadmap 从成熟单次调用链路切到 Harness 多阶段编排（骨架→补详情两次 LLM + planner 额外调用），导致生成变慢、样式/质量下降。
+  修复：resolveGenerationPath 回退 compare→legacy-viewpoint、roadmap→legacy-roadmap，Harness 仅保留 direct API 实验用途（d147656）。
+- 问题2：收藏夹"编排失败 Cannot read properties of undefined (reading 'replace')" — favlist-contents 返回小写字段与 SearchResultItem 大写字段不匹配。
+  修复：favlist-contents API 直接返回 SearchResultItem 结构（大写字段），与 generate(picked) 管线对齐。
+- 新增：个人中心面板（登录后点用户名展开），展示收藏夹列表（一键生成路线）+ 关注的人说明。
+- 验证：129 tests / 123 pass / 0 fail；lint 0 error；tsc clean；build 通过。
+- 部署：kanshan-maps-ccqrvx628-liurc2004.vercel.app ● READY (Production)
