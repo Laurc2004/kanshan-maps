@@ -1,5 +1,36 @@
 # Progress Log — kanshan-maps
 
+## Session 8 — 2026-09-12（Phase 10: Harness 架构设计）— in_progress
+- 用户批准总体方向：Intent → Source → Synthesis → Layout → Style → Validate → Render
+- 已完成并自审设计稿：`docs/superpowers/specs/2026-09-12-harness-orchestration-design.md`
+- 设计采用“受约束 Planner + 确定性执行器”，包含多源 Adapter、统一 KnowledgeGraph IR、6 类布局模板、风格参数、引用校验和有限调用预算
+- 同一设计明确：清空增加产品内确认弹窗；删除不可靠的知乎搜索分页交互
+- 外部限制：飞书文档抓取 403，本地 Chrome 登录数据不可读取；设计只使用仓库内官方知乎文档与用户明确列出的能力，未冒充读取原文
+- 当前门：Task 2 契约修正已完成，`PresentationSpec.layout` 缺口已确认存在并补齐（`c88abf1`）；28/28 测试、tsc、lint、diff 检查通过；Task 3 增加去除画布右上角素材库入口后开始实施
+- Task 3 首次子代理使用已统一后的 `glm-5.3-flash`，但 600 秒超时；已检查留下的 `zhihu.ts`、`sources.ts`、`sources.test.ts`，分页移除和素材库 CSS 尚未全部收尾，重新派发修复任务
+- Task 3 代码质量审查：无 critical；要求修复 AbortSignal 未贯通、collectSources 负预算、知识 work_id 规范化校验；另补 malformed item、timeout、预算和取消传播测试
+- Task 3 最终审查未通过：collectSources 未接收外部 AbortSignal；跨源 ContentID 因 source 前缀无法去重；malformed 搜索项可生成 undefined 字段；知识详情失败未记录错误。已进入最后修正。
+- Task 3 加固完成：`5133594` 修复外部取消、跨源 ContentID 去重、malformed 输入隔离和知识错误记录；最终复核 PASS，44/44 Harness 测试、16/16 加固复核测试、tsc、lint、diff 检查通过。
+- 用户新增 Task 11：接入知乎 Hackathon OAuth 登录；指定 Skill 下载地址未能自动提取内容，OAuth 凭据需按安全边界使用，App Key 不写入仓库或 planning 文件。
+- 当前开始 Task 4：实现多源资料到统一 KnowledgeGraph IR 的综合器、引用白名单校验和结构修复；继续使用 `gpt-5.6-sol` 子代理。
+- Task 4 完成：`8818b13` 新增 KnowledgeGraph Synthesizer；实现 JSON 解析、节点 ID 修复、悬空边清理、citation 白名单、数量限制和数据-only Prompt；49/49 Harness 测试、tsc、lint、build、diff 检查通过。首次 Prompt 测试失败后确认是测试错误地只检查 user message，修正测试而未弱化安全 Prompt。
+- 当前门：进入 Task 5，准备把 Planner、Source Adapter、Synthesizer 串入有限步骤的 SSE Executor。
+- Task 5 完成：`3f8730b` 新增有限步骤 `runHarness`，支持并行来源收集、部分失败、最多一次补充查询、模型预算、AbortSignal 和 `mode=auto` SSE；保留 viewpoint/roadmap 兼容路径；57/57 Harness 测试、tsc、lint、build、diff 检查通过。
+- 当前门：进入 Task 6，统一 IR 兼容层与多布局。
+- Task 6 首次子代理超时；已留下 `compat.ts`、`layouts.ts`、对应测试及 `page.tsx`/`excalidraw-layout.ts` 修改，尚未提交，正在先验证部分实现和兼容旧路径。
+- Task 6 审查发现需修复：布局 element ID 的 safeId 可能碰撞；legacy graph 转 IR 依赖未持久化 sidecar 且超过 8 个节点会丢失；完整 LayoutKind 暂时只有前三种实现。已暂停后续任务，先修复重要问题。
+- Task 6 第二次复核发现：Hash 使用 `charCodeAt(0)` 处理非 BMP 字符时仍可能只取相同 high surrogate，😀/😁 等不同 ID 会碰撞；已要求改为按 UTF-16 code unit 或完整 code point 稳定哈希，并补测试。
+- Task 6 加固完成：`6f011f1` 改为按 UTF-16 code unit 稳定哈希并新增非 BMP ID 回归；legacy 大数据 graph 经 JSON 序列化后无损还原；70/70 Harness 测试、tsc、lint、build、diff 检查通过。Task 6 关闭。
+- 当前门：进入 Task 7，补齐 swimlane-roadmap / cluster-board / evidence-tree 和参数化风格。
+- Task 7 最终审查未通过：evidence-tree 只有根椭圆，没有根到子节点的层级连线和相对布局；`resolvePresentation` 在缺少 presentation 时没有正确使用 `RunPlan.style`。已进入修复。
+- Task 7 修复完成：`db5b07f` 增加 evidence-tree 根到每个 child 的语义连线并修正 child 布局；`RunPlan.style` 在无 presentation 时正确作为 palette 回退；78/78 Harness 测试、tsc、lint、build、diff 检查通过。
+- 当前门：进入 Task 8，统一跨图类型 Agent Patch。
+- Task 8 完成：`22ea2a5` 新增 KnowledgeGraph 受限 Patch 协议，支持节点/分组/强调/标题/呈现参数/reset/no-op；校验未知引用并保留 legacy ViewpointGraph；Agent 修改后走 adaptive render + persistence；89/89 Harness 测试、tsc、lint、build、diff 检查通过。
+- 当前门：进入 Task 9，智能编排 UI 和混合来源展示。
+- Task 9 完成：`a9009dd` 将默认生成模式设为 auto，同时保留 viewpoint/roadmap；页面消费 Harness SSE 阶段并展示 `HarnessStatus`；来源面板显示混合来源类型；保留自选生成、热榜、清空确认、导出、素材库隐藏和无分页；91 项测试、tsc、lint、build、diff 检查通过。
+- 当前门：进入 Task 10，全链路验证、推送并部署生产。
+- Task 10 开始：本地 `main` 比 `origin/main` ahead 15，Vercel CLI 已登录；先执行完整自动化与本地浏览器全链路验收，再提交 planning 文件、推送和生产部署。
+
 ## Session 7 — 2026-09-12（Phase 9: 用户反馈修复轮 3）— complete
 - 补齐上一轮遗漏的规划记录：导出位置、搜索结果保留、继续加载、清空画布、Agent 样式修改均已实现
 - 项目治理：更新 `AGENTS.md`，明确每次多步骤迭代必须先使用 `planning-with-files`，并维护 `task_plan.md` / `findings.md` / `progress.md`

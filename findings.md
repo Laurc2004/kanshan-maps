@@ -55,10 +55,25 @@
 - 故事/知识 列表+详情：`https://api.zhihu.com/km-indep-home/hackathon/v2/{story|knowledge}/{list|<work_id>}`
 - 知识接口可用于"学习路线图"场景的补充素材（P1）
 
-## 追加发现：Phase 9
-- 自选生成接口会再次发送 `sources` 事件，但其中只包含用户勾选的回答；前端需要保留原始完整搜索列表，不能直接覆盖素材状态。
-- `zhihu_search` 单次 `Count` 上限仍是 10，但接口支持通过 `Offset` 请求后续批次；素材栏可用滚动触底触发分页。
-- `AGENTS.md` 原先只有 Next.js 自动生成块，已补充项目级 planning-with-files 执行约束。
+## 追加发现：Phase 10
+- Harness 契约必须严格以批准设计为准：intent 是 compare/roadmap/timeline/concept-map/argument-map/summary-board，source 是按优先级的数组，layout 仅使用 6 个确定性模板。
+- Task 2 首次实现虽然 17 项测试全绿，但测试编码了错误词汇，说明“测试通过”不能替代规格审查；进入 Adapter 前必须先修正类型契约。
+- Task 3 子代理超时后保留了部分未提交实现；必须先检查工作区和现有测试，再进行定向收尾，不能重复覆盖或丢弃已完成代码。
+- Task 3 审查发现：仅用 Promise 超时会停止等待但不会取消底层请求；Source Adapter 必须贯通 AbortSignal，collectSources 还需在执行边界重新规范化预算和校验知识 work_id。
+- Task 3 最终审查补充：主收集 API 也必须接受外部 AbortSignal；跨来源去重应使用 ContentID 元数据而不是带 source 前缀的内部 ID；malformed 输入需被拒绝并留下错误记录。
+- Task 3 最终复核确认四项加固均通过；仓库没有 `npm test` script，使用 Node 原生 test runner 验证，不能把不存在的 npm test 当作失败。
+- OAuth 新任务：用户提供了知乎 Hackathon App ID/App Key；App Key 属于敏感凭据，只能注入本地或 Vercel Sensitive 环境变量，禁止写入源码、日志、planning 文件和提交。用户指定的 Skill ZIP 当前提示 `no content extracted`，需下载后核验压缩包并以官方 Skill 内容为准。
+- Task 4 执行边界：Synthesizer 必须以 SourceDocument 集合作为唯一事实输入，citation URL/id 不在输入白名单时剔除；结构修复只能补稳定 ID 和删除悬空 edge，不能编造来源。
+- Task 4 验证发现：安全 Prompt 放在 system message，测试必须检查全部 messages；只检查 user message 会产生假失败，不能因此降低 data-only 边界。
+- Task 5 约束：`mode=auto` 走 Harness，旧 `viewpoint`/`roadmap` 保持兼容；SSE 直接转发 Harness 阶段事件，缓存 key 必须包含 Harness 模式和引擎配置。
+- Task 6 中间状态：统一 IR 布局实现必须同时满足 Excalidraw 元素字段完整、碰撞无重叠和旧 graph 兼容；超时后的未提交代码不得直接视为完成。
+- Task 6 审查发现：element ID 不能只依赖清洗后的 node ID，必须加入原始 ID 的确定性 hash；兼容转换不能依赖运行时 sidecar 保存被截断的旧 graph，统一 IR 必须自包含可还原数据。
+- Task 6 复核补充：JavaScript `for...of` 得到 Unicode code point，但 `charCodeAt(0)` 只取 high surrogate；稳定 ID hash 必须按完整 code point 或 UTF-16 code unit 遍历，避免非 BMP 节点 ID 碰撞。
+- Task 6 最终方案：节点/graph `metadata` 保存兼容所需字段，统一 IR 经 JSON 序列化后仍可还原；元素 ID 使用清洗片段 + 完整 UTF-16 哈希，覆盖 ASCII 截断和非 BMP 两类碰撞。
+- Task 7 审查发现：布局测试必须验证语义而不只是“有元素/不碰撞”；evidence-tree 要断言根节点到 child 的连线和层级位置，presentation 缺省时要断言 plan.style 生效。
+- Task 7 最终实现：evidence-tree 语义由根节点到每个 child 的显式箭头保证；布局测试同时验证 child 相对 root 的位置和连线数量，避免仅凭元素数量误判。
+- Task 8 约束：Agent 只能输出 KnowledgeGraph 受限 Patch，不能输出 Excalidraw 坐标或直接改 citations；legacy graph 保留旧 graph-patch 路径，统一 graph 修改后必须重新走 adaptive render。
+- Task 9 UI：Harness 阶段事件通过独立 `HarnessStatus` 组件映射为中文标签；来源文档通过 `sourceType` 映射为知乎回答/全网搜索/知乎知识/自选资料/热榜/直答，避免将混合来源误显示为单一知乎结果。
 
 ## 产品化重构（Phase 3）设计决策 — 2026-09-11
 

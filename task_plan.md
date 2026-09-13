@@ -116,6 +116,29 @@
 - [x] T6 项目治理：AGENTS.md 约束每轮多步骤迭代必须先使用 planning-with-files，并持续维护三份 planning 文件
 - [x] T7 验证：npm run lint / npx tsc --noEmit / npm run build / git diff --check 全通过；本地 3001 首页与分页搜索 API 均返回 200
 
+### Phase 10: Harness 多源编排架构设计 — status: in_progress
+- [x] T1 需求确认：清空增加二次确认；移除无效的“加载更多”；生成链升级为多源、可编排、可验证的 Harness
+- [x] T2 现状审计：当前生成链固定为知乎搜索 → 单次模型提炼 → viewpoint/roadmap 固定布局；Agent 仅支持 graph ops
+- [x] T3 设计方案获用户确认：Intent → Source → Synthesis → Layout → Style → Validate → Render
+- [x] T4 编写并自审正式设计文档：`docs/superpowers/specs/2026-09-12-harness-orchestration-design.md`
+- [x] T5 用户复核设计文档后，使用 writing-plans 拆解实施计划：`docs/superpowers/plans/2026-09-12-harness-orchestration-implementation.md`
+- [x] T1 实施：清空确认弹窗、移除搜索分页；提交 `680bcb9`
+- [x] T2 实施：定义 Harness 契约和 Planner；规格修正提交 `70a5b05` / `dec3c96` / `c88abf1`，28/28 测试通过
+- [x] T3 实施：建立 Source Adapter 与规范化层；同时去除画布右上角 Excalidraw 素材库入口；提交 `b3ad10f` + `5133594`
+- [x] T4 实施：KnowledgeGraph Synthesizer 与引用校验；提交 `8818b13`，49 项 Harness 回归测试通过
+- [x] T5 实施：Harness Executor 与 SSE 事件链；提交 `3f8730b`，57 项 Harness 测试通过
+- [x] T6 实施：统一 IR 兼容层与前三种布局；提交 `f7a4a95` + `6f011f1`，70 项 Harness 测试通过
+- [x] T7 实施：扩展布局与参数化风格；提交 `b402233` + `db5b07f`，78 项 Harness 测试通过
+- [x] T8 实施：跨图类型 Agent Patch；提交 `22ea2a5`，89 项 Harness 测试通过
+- [x] T9 实施：智能编排 UI 和混合来源；提交 `a9009dd`，Harness 与组件测试通过
+- [ ] T10 实施：全链路验证、推送并部署生产（in_progress）
+- [ ] T11 实施：知乎 Hackathon OAuth 登录接入
+  - 下载并核验用户指定的 Hackathon Skill；若压缩包无法自动提取，记录实际错误并改用安全的本地解压/官方文档路径
+  - 使用 App ID 配置 OAuth；App Key 只通过本地 `.env`/Vercel Sensitive Environment Variable 注入，不写入代码、规划文件、日志或提交
+  - 按 Skill 要求完成回调 URI、state/CSRF、授权码换 Token、会话 Cookie、登录态查询和退出登录
+  - 在固定生产域名上完成 OAuth 回调验证；没有真实凭证联调证据前保持 `in_progress`
+  - 增加未配置凭证、state 不匹配、缺少授权码、Token 交换失败和成功登录的测试
+
 ## Errors Encountered
 | Error | Attempt | Resolution |
 |-------|---------|------------|
