@@ -196,3 +196,9 @@
 - 生产部署：dpl → kanshan-maps-7h5hcc61p-liurc2004.vercel.app readyState READY
 - 生产验收：kanshan.space 200 + 标题正确；/api/auth/login 307 → authorize 且 redirect_uri 已是 kanshan.space/api/auth/callback（与知乎活动页登记一致）；/api/auth/me 200；热榜 API 正常返回；URL 直达分支在生产生效（假 ID → 友好 403 错误事件，符合预期）
 - 注意：本轮 OAuth 环境变量重置后，真实登录联调需用户在新域名点一次知乎授权确认闭环
+
+## Session 20 续2 — 2026-09-14（kimi-k3 样式审查应用 + 二次上线）— complete
+- kimi-k3 只读审查返回 20 条建议；筛选应用 14 条（其余为过度设计或与现有约定冲突被否）：Island 包装画板控件、appearance-none 自定义 chevron 的样式化 select、控件统一 h-7、深色 toast 反馈、Profile tab 改素材栏同款胶囊、图标收起钮、收藏夹 chip 截断、空态两级文案、9px 字号修正、顶栏个人中心未登录隐藏并去文字（与用户胶囊不再重复）
+- 未采纳：#5 小屏隐藏文字（renderTopRightUI 自身有响应式）、#19 移除用户胶囊入口（保留双入口）、#4 全局 font 覆盖（font-family: inherit 已足够）
+- 验证：tsc 0 错 / 152 tests 0 fail / lint 0 error / build 16 路由过
+- 提交 0547f81 推送；生产部署 READY；kanshan.space 200、OAuth redirect_uri 指向新域名
