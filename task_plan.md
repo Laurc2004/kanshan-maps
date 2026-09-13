@@ -132,14 +132,14 @@
 - [x] T8 实施：跨图类型 Agent Patch；提交 `22ea2a5`，89 项 Harness 测试通过
 - [x] T9 实施：智能编排 UI 和混合来源；提交 `a9009dd`，Harness 与组件测试通过
 - [x] T10 实施：全链路验证、推送并部署生产；`164a516` 已推送，生产部署 `dpl_9EqqhGqTSJfANxtr6nQ8LEQp1kK` READY
-- [ ] T11 实施：知乎 Hackathon OAuth 登录接入 — status: in_progress（真实授权联调待用户操作）
+- [x] T11 实施：知乎 Hackathon OAuth 登录接入 — status: complete（2026-09-13 生产真实授权闭环验证通过）
   - [x] 下载并核验用户指定的 Hackathon Skill：官方 URL 包与 Downloads v260815 包 diff 确认后者为更新版（多 deployment-credentials.md + 凭证命名规范），以 v260815 为权威，存档 docs/zhihu-skill/zhihu-hackathon/（提交 388a6ca）
   - [x] 凭证命名对齐 Skill 规范：ZHIHU_APP_KEY → ZHIHU_OAUTH_APP_KEY（callback route + .env.example 本地未跟踪文件）；App Key 只进本地 .env / Vercel Encrypted，泄漏扫描 0 命中
   - [x] 本地 .env 填 ZHIHU_APP_ID / ZHIHU_OAUTH_APP_KEY / OAUTH_REDIRECT_URI=https://kanshan-maps.vercel.app/api/auth/callback
   - [x] Vercel 环境变量（prod/preview/dev ×3 + dev 普通 App Key）：Skill 三项核对通过（两 Secret sha256 前缀不同 6f6a3b5b≠689da02f、App Key 长度 32 非 App ID、命名不串位）
   - [x] 增加 6 项 OAuth 场景测试（未配置 503 / 307+state cookie / 缺 code / state 不匹配 / 换 token 失败 / 成功登录+me）：node --test 6/6 PASS（ZHIHU_TOKEN_URL 仅测试覆盖，默认官方端点）
   - [x] 部署：388a6ca 推送 + 生产 Ready；验证 /api/auth/login 307 → openapi.zhihu.com/authorize?app_id=436&redirect_uri=.../api/auth/callback ✅
-  - [ ] 真实授权联调：用户在 https://kanshan-maps.vercel.app 点登录 → 本人确认知乎授权页 → 回调成功/关注列表拉取（Skill 要求授权确认页须用户本人点击，Agent 不代点）
+  - [x] 真实授权联调（2026-09-13 16:06 生产日志）：GET /api/auth/login 307 → GET /api/auth/callback 307（无 token_exchange_failed）→ GET /api/auth/me 200 → GET /api/me/followees 200（会话有效、关注列表拉取成功）；活动页回调登记与代码完全一致（authorize 端点无非法回调报错）
 
 ## Errors Encountered
 | Error | Attempt | Resolution |
