@@ -132,13 +132,14 @@
 - [x] T8 实施：跨图类型 Agent Patch；提交 `22ea2a5`，89 项 Harness 测试通过
 - [x] T9 实施：智能编排 UI 和混合来源；提交 `a9009dd`，Harness 与组件测试通过
 - [x] T10 实施：全链路验证、推送并部署生产；`164a516` 已推送，生产部署 `dpl_9EqqhGqTSJfANxtr6nQ8LEQp1kK` READY
-- [ ] T11 实施：知乎 Hackathon OAuth 登录接入 — status: in_progress（2026-09-13 开始）
-  - [x] 下载并核验用户指定的 Hackathon Skill：官方 URL 包与 Downloads v260815 包 diff 确认后者为更新版（多 deployment-credentials.md + 凭证命名规范），以 v260815 为权威，存档 docs/zhihu-skill/zhihu-hackathon/
-  - [ ] 凭证命名对齐 Skill 规范：ZHIHU_APP_KEY → ZHIHU_OAUTH_APP_KEY（代码+.env.example）；App ID 只进 ZHIHU_APP_ID；App Key 只通过本地 .env / Vercel Sensitive 注入，不写入代码、规划文件、日志或提交
-  - [ ] 本地 .env 填 ZHIHU_APP_ID=436 / ZHIHU_OAUTH_APP_KEY / OAUTH_REDIRECT_URI=https://kanshan-maps.vercel.app/api/auth/callback
-  - [ ] Vercel 环境变量：ZHIHU_APP_ID + OAUTH_REDIRECT_URI（普通）+ ZHIHU_OAUTH_APP_KEY（Encrypted，prod/preview/dev）
-  - [ ] 增加测试：未配置凭证、state 不匹配、缺少授权码、Token 交换失败、成功登录
-  - [ ] 部署后在 https://kanshan-maps.vercel.app 完成 OAuth 回调验证（授权确认页须用户本人点击）；没有真实凭证联调证据前保持 in_progress
+- [ ] T11 实施：知乎 Hackathon OAuth 登录接入 — status: in_progress（真实授权联调待用户操作）
+  - [x] 下载并核验用户指定的 Hackathon Skill：官方 URL 包与 Downloads v260815 包 diff 确认后者为更新版（多 deployment-credentials.md + 凭证命名规范），以 v260815 为权威，存档 docs/zhihu-skill/zhihu-hackathon/（提交 388a6ca）
+  - [x] 凭证命名对齐 Skill 规范：ZHIHU_APP_KEY → ZHIHU_OAUTH_APP_KEY（callback route + .env.example 本地未跟踪文件）；App Key 只进本地 .env / Vercel Encrypted，泄漏扫描 0 命中
+  - [x] 本地 .env 填 ZHIHU_APP_ID / ZHIHU_OAUTH_APP_KEY / OAUTH_REDIRECT_URI=https://kanshan-maps.vercel.app/api/auth/callback
+  - [x] Vercel 环境变量（prod/preview/dev ×3 + dev 普通 App Key）：Skill 三项核对通过（两 Secret sha256 前缀不同 6f6a3b5b≠689da02f、App Key 长度 32 非 App ID、命名不串位）
+  - [x] 增加 6 项 OAuth 场景测试（未配置 503 / 307+state cookie / 缺 code / state 不匹配 / 换 token 失败 / 成功登录+me）：node --test 6/6 PASS（ZHIHU_TOKEN_URL 仅测试覆盖，默认官方端点）
+  - [x] 部署：388a6ca 推送 + 生产 Ready；验证 /api/auth/login 307 → openapi.zhihu.com/authorize?app_id=436&redirect_uri=.../api/auth/callback ✅
+  - [ ] 真实授权联调：用户在 https://kanshan-maps.vercel.app 点登录 → 本人确认知乎授权页 → 回调成功/关注列表拉取（Skill 要求授权确认页须用户本人点击，Agent 不代点）
 
 ## Errors Encountered
 | Error | Attempt | Resolution |
