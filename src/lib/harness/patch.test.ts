@@ -140,3 +140,19 @@ test("legacy viewpoint patches remain compatible", () => {
   assert.equal(result.graph.question, "New");
   assert.equal(result.applied.length, 1);
 });
+
+test("malformed ops fail with friendly errors instead of crashing", () => {
+  const base = { kind: "radial-map" as const, title: "T", summary: "", nodes: [{ id: "n1", label: "A", description: "", citations: [] }], edges: [], groups: [{ id: "g1", label: "G", nodeIds: ["n1"] }], citations: [], presentation: { palette: "zhihu-blue" as const, density: "comfortable" as const, stroke: "clean" as const, hierarchy: { title: 1, keyFinding: 1, evidence: 1 } } };
+  // set_presentation 无 patch：不再 TypeError，而是友好失败
+  const r1 = applyKnowledgeGraphOps(structuredClone(base), [{ op: "set_presentation" } as never]);
+  assert.equal(r1.failed.length, 1);
+  assert.match(r1.failed[0], /patch 对象/);
+  // groupId undefined：不再 "未知分组: undefined"，明确提示 ID 缺失
+  const r2 = applyKnowledgeGraphOps(structuredClone(base), [{ op: "update_group", groupId: undefined, patch: { label: "x" } } as never]);
+  assert.equal(r2.failed.length, 1);
+  assert.match(r2.failed[0], /分组 ID 缺失/);
+  // agent prompt 注入可用 ID 白名单
+  const msgs = buildKnowledgeGraphAgentMessages([], base, "测试");
+  assert.match(msgs[0].content, /可用 ID —— 节点：n1/);
+  assert.match(msgs[0].content, /可用 ID —— 分组：g1/);
+});

@@ -41,7 +41,7 @@ function applyOne(g: KnowledgeGraph, op: KnowledgeGraphOp) {
   switch (op.op) {
     case "add_node": {
       assertNodeShape(op.node); if (node(g, op.node.id)) throw new Error(`节点已存在: ${op.node.id}`); assertCitations(g, op.node.citations);
-      if (op.groupId) { const target = group(g, op.groupId); if (!target) throw new Error(`未知分组: ${op.groupId}`); }
+      if (op.groupId) { if (typeof op.groupId !== "string" || !op.groupId.trim()) throw new Error("分组 ID 缺失：请使用 graph.groups 中的真实 id，不能是标签名或 undefined"); const target = group(g, op.groupId); if (!target) throw new Error(`未知分组: ${op.groupId}（只能用 graph.groups 里的 id）`); }
       g.nodes.push(clone({ ...op.node, ...(op.groupId ? { group: op.groupId } : {}) }));
       if (op.groupId) group(g, op.groupId)!.nodeIds.push(op.node.id);
       return `新增节点「${op.node.label}」`;
@@ -50,7 +50,7 @@ function applyOne(g: KnowledgeGraph, op: KnowledgeGraphOp) {
       const target = node(g, op.nodeId); if (!target) throw new Error(`未知节点: ${op.nodeId}`);
       if ("id" in op.patch && op.patch.id !== op.nodeId) throw new Error("不允许修改节点 ID");
       if (op.patch.citations !== undefined) assertCitations(g, op.patch.citations);
-      if (op.patch.group !== undefined && op.patch.group !== "") { if (!group(g, op.patch.group)) throw new Error(`未知分组: ${op.patch.group}`); }
+      if (op.patch.group !== undefined && op.patch.group !== "") { if (typeof op.patch.group !== "string" || !op.patch.group.trim() || !group(g, op.patch.group)) throw new Error(`未知分组: ${String(op.patch.group)}（只能用 graph.groups 里的 id）`); }
       Object.assign(target, clone(op.patch)); return `更新节点「${target.label}」`;
     }
     case "remove_node": {
@@ -62,16 +62,19 @@ function applyOne(g: KnowledgeGraph, op: KnowledgeGraphOp) {
       if (op.group.nodeIds.some((id) => !node(g, id))) throw new Error("分组包含未知节点");
       g.groups.push(clone(op.group)); return `新增分组「${op.group.label}」`;
     case "update_group": {
-      const target = group(g, op.groupId); if (!target) throw new Error(`未知分组: ${op.groupId}`);
+      if (typeof op.groupId !== "string" || !op.groupId.trim()) throw new Error("分组 ID 缺失：请使用 graph.groups 中的真实 id");
+      const target = group(g, op.groupId); if (!target) throw new Error(`未知分组: ${op.groupId}（只能用 graph.groups 里的 id）`);
+      if (!op.patch || typeof op.patch !== "object") throw new Error("update_group 需要 patch 对象");
       if (op.patch.id !== undefined && op.patch.id !== op.groupId) throw new Error("不允许修改分组 ID");
       if (op.patch.nodeIds && op.patch.nodeIds.some((id) => !node(g, id))) throw new Error("分组包含未知节点");
       Object.assign(target, clone(op.patch)); return `更新分组「${target.label}」`;
     }
     case "remove_group": {
-      if (!group(g, op.groupId)) throw new Error(`未知分组: ${op.groupId}`); g.groups = g.groups.filter((item) => item.id !== op.groupId); g.nodes.forEach((item) => { if (item.group === op.groupId) delete item.group; }); return "删除分组";
+      if (typeof op.groupId !== "string" || !op.groupId.trim()) throw new Error("分组 ID 缺失：请使用 graph.groups 中的真实 id");
+      if (!group(g, op.groupId)) throw new Error(`未知分组: ${op.groupId}（只能用 graph.groups 里的 id）`); g.groups = g.groups.filter((item) => item.id !== op.groupId); g.nodes.forEach((item) => { if (item.group === op.groupId) delete item.group; }); return "删除分组";
     }
     case "set_node_group": {
-      assertNode(g, op.nodeId); if (op.groupId && !group(g, op.groupId)) throw new Error(`未知分组: ${op.groupId}`);
+      assertNode(g, op.nodeId); if (op.groupId !== undefined && (typeof op.groupId !== "string" || !op.groupId.trim())) throw new Error("分组 ID 缺失：请使用 graph.groups 中的真实 id"); if (op.groupId && !group(g, op.groupId)) throw new Error(`未知分组: ${op.groupId}（只能用 graph.groups 里的 id）`);
       g.groups.forEach((item) => { item.nodeIds = item.nodeIds.filter((id) => id !== op.nodeId); }); const target = node(g, op.nodeId)!; if (op.groupId) { target.group = op.groupId; group(g, op.groupId)!.nodeIds.push(op.nodeId); } else delete target.group; return "调整节点分组";
     }
     case "set_emphasis":
@@ -81,7 +84,13 @@ function applyOne(g: KnowledgeGraph, op: KnowledgeGraphOp) {
     case "rename_graph":
       if (op.title !== undefined) { if (!op.title.trim()) throw new Error("标题不能为空"); g.title = op.title.slice(0, 160); } if (op.summary !== undefined) g.summary = op.summary.slice(0, 500); return "更新图标题与摘要";
     case "set_presentation": {
-      const p = op.patch; if (p.layout !== undefined && !layouts.has(p.layout)) throw new Error("不支持的布局"); if (p.palette !== undefined && !palettes.has(p.palette)) throw new Error("不支持的调色板"); if (p.density !== undefined && !densities.has(p.density)) throw new Error("不支持的密度"); if (p.stroke !== undefined && !strokes.has(p.stroke)) throw new Error("不支持的线条"); if (p.hierarchy && Object.values(p.hierarchy).some((v) => typeof v !== "number" || v <= 0 || v > 3)) throw new Error("层级参数无效");
+      const p = op.patch;
+      if (!p || typeof p !== "object") throw new Error("set_presentation 需要 patch 对象（如 {\"patch\":{\"palette\":\"monochrome\"}}）");
+      if (p.layout !== undefined && !layouts.has(p.layout)) throw new Error("不支持的布局");
+      if (p.palette !== undefined && !palettes.has(p.palette)) throw new Error("不支持的调色板");
+      if (p.density !== undefined && !densities.has(p.density)) throw new Error("不支持的密度");
+      if (p.stroke !== undefined && !strokes.has(p.stroke)) throw new Error("不支持的线条");
+      if (p.hierarchy && Object.values(p.hierarchy).some((v) => typeof v !== "number" || v <= 0 || v > 3)) throw new Error("层级参数无效");
       g.presentation = { ...g.presentation, ...clone(p), hierarchy: { ...g.presentation.hierarchy, ...(p.hierarchy ?? {}) } }; if (p.layout) g.kind = p.layout; return "更新呈现参数";
     }
     case "relayout": return "重新布局";
@@ -101,10 +110,16 @@ export function applyKnowledgeGraphOps(graph: KnowledgeGraph, ops: KnowledgeGrap
   return { graph: current, applied, failed, changed: JSON.stringify(current) !== JSON.stringify(graph) };
 }
 
-export const KNOWLEDGE_GRAPH_AGENT_INSTRUCTION = `你是知识图助手，只输出 JSON：{"reply":"...","ops":[...]}。你只能使用受限操作：add_node、update_node、remove_node、add_group、update_group、remove_group、set_node_group、set_emphasis、rename_graph、set_presentation、relayout、reset、no_op。节点、分组、连线和引用必须使用当前 graph 中真实存在的 ID；不能新增或修改 citations，不能编造来源。不要输出坐标或 Excalidraw 元素。`;
+export const KNOWLEDGE_GRAPH_AGENT_INSTRUCTION = `你是知识图助手，只输出 JSON：{"reply":"...","ops":[...]}。你只能使用受限操作：add_node、update_node、remove_node、add_group、update_group、remove_group、set_node_group、set_emphasis、rename_graph、set_presentation、relayout、reset、no_op。
+关键规则：
+- 所有 nodeId/groupId/fromId/toId 必须取自下方"可用 ID"列表，禁止使用标签名、undefined 或自造 ID。
+- set_presentation 必须带 patch 对象，如 {"op":"set_presentation","patch":{"palette":"monochrome"}}。
+- 不能新增或修改 citations，不能编造来源；不要输出坐标或 Excalidraw 元素。`;
 export function buildKnowledgeGraphAgentMessages(history: { role: string; content: string }[], graph: KnowledgeGraph, message: string) {
   const transcript = history.slice(-8).map((item) => `${item.role === "user" ? "用户" : "助手"}: ${item.content}`).join("\n");
-  return [{ role: "user", content: `${KNOWLEDGE_GRAPH_AGENT_INSTRUCTION}\n当前 graph：\n${JSON.stringify(graph)}\n${transcript ? `对话历史：\n${transcript}\n` : ""}用户要求：${message}` }];
+  const nodeIds = graph.nodes.map((n) => `${n.id}（${n.label.slice(0, 12)}）`).join("、");
+  const groupIds = graph.groups.map((grp) => `${grp.id}（${grp.label.slice(0, 12)}）`).join("、") || "（无分组）";
+  return [{ role: "user", content: `${KNOWLEDGE_GRAPH_AGENT_INSTRUCTION}\n可用 ID —— 节点：${nodeIds}\n可用 ID —— 分组：${groupIds}\n当前 graph：\n${JSON.stringify(graph)}\n${transcript ? `对话历史：\n${transcript}\n` : ""}用户要求：${message}` }];
 }
 export function parseKnowledgeGraphAgentResponse(raw: string): { reply: string; ops: KnowledgeGraphOp[] } {
   const text = raw.replace(/```json|```/g, "").trim(); const start = text.indexOf("{"); const end = text.lastIndexOf("}");

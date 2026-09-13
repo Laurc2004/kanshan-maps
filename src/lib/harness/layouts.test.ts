@@ -54,7 +54,7 @@ test("unsupported layout falls back explicitly and deterministically", () => {
 
 test("same graph produces the same scene IDs and geometry", () => assert.deepEqual(knowledgeGraphToScene(graph("cluster-board")), knowledgeGraphToScene(graph("cluster-board"))));
 
-test("unassigned nodes occupy unique fallback slots and duplicate edges get unique IDs", () => {
+test("unassigned nodes occupy unique fallback slots and edge rate-limit drops redundant arrows", () => {
   const value = graph("swimlane-roadmap");
   value.groups = [{ id: "g1", label: "One", nodeIds: ["n0"] }];
   value.nodes = value.nodes.map((node, i) => ({ ...node, group: i === 0 ? "g1" : undefined }));
@@ -62,7 +62,8 @@ test("unassigned nodes occupy unique fallback slots and duplicate edges get uniq
   const scene = knowledgeGraphToScene(value);
   const rects = scene.filter((e) => e.type === "rectangle") as Array<{ x: number; y: number; width: number; height: number }>;
   assert.deepEqual(substantiveCollisions(scene), []);
-  assert.equal(new Set(scene.filter((e) => e.type === "arrow").map((e) => e.id)).size, 6);
+  // 边限流：每节点最多 1 出 1 入，重复边被丢弃 → 5 条唯一箭头
+  assert.equal(new Set(scene.filter((e) => e.type === "arrow").map((e) => e.id)).size, 5);
   assert.ok(rects.every((r) => r.width > 0 && r.height > 0));
 });
 
@@ -103,4 +104,26 @@ test("evidence-tree connects its root to every child and places children to the 
   assert.ok(children.every((child) => child.x > root.x + root.width));
   assert.equal(scene.filter((element) => element.type === "arrow" && element.startNodeId === "evidence-root").length, children.length);
   for (const child of children) assert.ok(scene.some((element) => element.type === "arrow" && element.startNodeId === "evidence-root" && element.endNodeId === child.customData.nodeId));
+});
+
+test("debate-grid places opposing groups on left/right with edge rate-limit", () => {
+  const value = graph("debate-grid");
+  const scene = knowledgeGraphToScene(value);
+  const rects = scene.filter((e) => e.type === "rectangle" && String(e.id).startsWith("node-")) as Array<{ id: string; x: number }>;
+  assert.ok(rects.length === 6, `expected 6 cards, got ${rects.length}`);
+  const xs = rects.map((r) => r.x);
+  const mid = (Math.min(...xs) + Math.max(...xs)) / 2;
+  const g1Ids = new Set(value.groups[0].nodeIds);
+  const g2Ids = new Set(value.groups[1].nodeIds);
+  for (const r of rects) {
+    const nodeId = value.nodes.find((n) => String(r.id).startsWith(`node-${n.id}`))?.id;
+    if (!nodeId) continue;
+    if (g1Ids.has(nodeId)) assert.ok(r.x < mid, `g1 node ${nodeId} should be left (x=${r.x}, mid=${mid})`);
+    if (g2Ids.has(nodeId)) assert.ok(r.x > mid, `g2 node ${nodeId} should be right (x=${r.x}, mid=${mid})`);
+  }
+  // 边限流后每节点出边 <= 1
+  const arrows = scene.filter((e) => e.type === "arrow" && String(e.id).startsWith("edge-")) as Array<{ startNodeId: string }>;
+  const outCounts = new Map<string, number>();
+  for (const a of arrows) outCounts.set(a.startNodeId, (outCounts.get(a.startNodeId) ?? 0) + 1);
+  for (const c of outCounts.values()) assert.ok(c <= 1, "edge rate-limit violated");
 });

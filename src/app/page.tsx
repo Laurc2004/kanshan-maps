@@ -9,7 +9,7 @@ import type { RoadmapGraph } from "@/lib/roadmap";
 import type { KnowledgeGraph } from "@/lib/harness/types";
 import type { HarnessEventType, SourceDocument } from "@/lib/harness/types";
 import type { SearchResultItem } from "@/lib/zhihu";
-import AgentPanel, { type HarnessProgress } from "@/components/AgentPanel";
+import AgentPanel, { type HarnessProgress, type HarnessStep } from "@/components/AgentPanel";
 import SourcesPanel, { type HotItem } from "@/components/SourcesPanel";
 import { requestClearBoard } from "@/lib/board-actions";
 import HarnessStatus from "@/components/HarnessStatus";
@@ -51,6 +51,7 @@ export default function Home() {
   const [sourceDocuments, setSourceDocuments] = useState<SourceDocument[]>([]);
   const [harnessEvent, setHarnessEvent] = useState<HarnessEventType | null>(null);
   const [harnessProgress, setHarnessProgress] = useState<HarnessProgress | null>(null);
+  const [searching, setSearching] = useState(false); // 找回答独立加载态：不影响画板/生成按钮
   const [showSources, setShowSources] = useState(true);
   const [showEngineCfg, setShowEngineCfg] = useState(false);
   const [engine, setEngine] = useState<Engine>({ id: "builtin" });
@@ -210,10 +211,16 @@ export default function Home() {
     }
     if (apiRef.current) {
       apiRef.current.updateScene({ elements });
-      setTimeout(
-        () => apiRef.current?.scrollToContent(undefined, { fitToViewport: true, viewportZoomFactor: 0.85 }),
-        100
-      );
+      // 大图（路线图多列）时 100ms 一次 scrollToContent 可能没生效，重试直到视口适配
+      let fitTries = 0;
+      const fit = () => {
+        fitTries += 1;
+        const api = apiRef.current;
+        if (!api) return;
+        api.scrollToContent(undefined, { fitToViewport: true, viewportZoomFactor: 0.85 });
+        if (fitTries < 8) setTimeout(fit, 150);
+      };
+      setTimeout(fit, 100);
     } else {
       pendingRef.current = elements;
       setBoardMounted(true);
@@ -290,13 +297,23 @@ export default function Home() {
           } else if (["planning", "searching", "synthesizing", "laying_out", "validating"].includes(event)) {
             setHarnessEvent(event as HarnessEventType);
             setHarnessProgress((prev: HarnessProgress | null) => {
-              const label: Record<string, string> = {
-                planning: "规划编排方案", searching: "检索知乎内容", synthesizing: `综合 ${data.documents ?? ""}`.trim(),
-                laying_out: "布局画板", validating: `验证 ${data.nodes ?? ""}`.trim(),
-              };
-              const step = label[event] ?? event;
-              const steps = prev && !prev.steps.includes(step) ? [...prev.steps, step] : (prev?.steps ?? (step ? [step] : []));
-              return { stage: event as HarnessProgress["stage"], steps };
+              // 每步带输入/输出摘要，让用户看得见 harness 在做什么
+              let step: HarnessStep | null = null;
+              if (event === "planning") {
+                step = { label: "规划编排方案", input: `问题「${question}」`, output: data.plan ? `图类型 ${data.plan.layout ?? "auto"} · 数据源 ${(data.plan.sources ?? []).join("/")}` : undefined };
+              } else if (event === "searching") {
+                step = { label: "检索内容", input: `关键词 ${(data.queries ?? []).join("、") || question}`, output: data.supplementary ? "补充检索一轮" : undefined };
+              } else if (event === "synthesizing") {
+                step = { label: "综合提炼观点", input: `${data.documents ?? "?"} 篇素材`, output: "提炼节点、立场与引用" };
+              } else if (event === "laying_out") {
+                step = { label: "布局画板", input: `布局 ${data.layout ?? ""}`, output: "计算卡片位置防重叠" };
+              } else if (event === "validating") {
+                step = { label: "验证结果", output: `${data.nodes ?? "?"} 个节点 · ${data.edges ?? "?"} 条关系` };
+              }
+              const steps = step ? [...(prev?.steps ?? []), step] : (prev?.steps ?? []);
+              const seen = new Set<string>();
+              const deduped = steps.filter((s) => (seen.has(s.label) ? false : (seen.add(s.label), true)));
+              return { stage: event as HarnessProgress["stage"], steps: deduped };
             });
           } else if (event === "sources") {
             // 自选生成时保留完整搜索结果，避免只剩被选中的几篇。
@@ -320,10 +337,12 @@ export default function Home() {
             setSourceDocuments((data.documents ?? data.items ?? []) as SourceDocument[]);
             setHarnessEvent("sources");
             setHarnessProgress((prev: HarnessProgress | null) => {
-              const count = (data.documents ?? data.items ?? []).length;
-              const step = `整理素材 · ${count} 条`;
-              const steps = prev && !prev.steps.includes(step) ? [...prev.steps, step] : (prev?.steps ?? [step]);
-              return { stage: "sources", steps };
+              const docs = (data.documents ?? data.items ?? []) as { title?: string; sourceType?: string }[];
+              const count = docs.length;
+              // 展示前几条素材标题，让用户看到检索到的内容
+              const head = docs.slice(0, 3).map((d) => (d.title ?? "").slice(0, 18)).filter(Boolean).join("、");
+              const step: HarnessStep = { label: "整理素材", output: `${count} 条${head ? ` · 如 ${head}${count > 3 ? " 等" : ""}` : ""}` };
+              return { stage: "sources", steps: [...(prev?.steps ?? []), step] };
             });
             setShowSources(true);
           } else if (event === "graph") {
@@ -332,7 +351,13 @@ export default function Home() {
             graphRef.current = data.graph;
             setGraphMode(data.mode === "roadmap" ? "roadmap" : "viewpoint");
             setHarnessEvent("graph");
-            setHarnessProgress(null); // 成功：进度卡片收起
+            setHarnessProgress((prev: HarnessProgress | null) => {
+              const g = data.graph as { title?: string; nodes?: unknown[] } | undefined;
+              const step: HarnessStep = { label: "生成完成", output: g?.title ? `「${String(g.title).slice(0, 20)}」· ${g.nodes?.length ?? "?"} 个节点已落画板` : "图已落画板" };
+              return { stage: "graph", steps: [...(prev?.steps ?? []), step] };
+            });
+            // 成功后进度卡片保留 4 秒再收起，让用户看清每步做了什么
+            setTimeout(() => setHarnessProgress(null), 4000);
             setBoardMounted(true);
             await renderGraph(data.graph, undefined, data.mode);
             persistBoard(data.graph, data.mode === "roadmap" ? "roadmap" : "viewpoint", question, streamedItems);
@@ -372,11 +397,10 @@ export default function Home() {
     [question, loading, engine, mode, renderGraph, persistBoard]
   );
 
-  // 只找回答不生成（自选素材流程第一步）
+  // 只找回答不生成（自选素材流程第一步）：独立 searching 态，画板和生成按钮保持不变
   const findAnswers = useCallback(async () => {
-    if (!question.trim() || loading) return;
-    setLoading(true);
-    setError(null);
+    if (!question.trim() || searching) return;
+    setSearching(true);
     setStatus("正在搜索知乎回答…");
     try {
       const res = await fetch("/api/search", {
@@ -395,9 +419,9 @@ export default function Home() {
       setError(e instanceof Error ? e.message : "搜索失败，请稍后重试");
       setStatus(null);
     } finally {
-      setLoading(false);
+      setSearching(false);
     }
-  }, [question, loading]);
+  }, [question, searching]);
 
   const clearBoard = useCallback(() => {
     const reset = requestClearBoard(true);
@@ -591,15 +615,27 @@ export default function Home() {
           />
           <button
             onClick={findAnswers}
-            disabled={loading || !question.trim()}
+            disabled={searching || loading || !question.trim()}
             className="flex shrink-0 items-center gap-1 rounded-full border border-gray-200 bg-white px-3.5 py-2 text-sm text-gray-500 transition hover:border-[#0066ff]/50 hover:text-[#0066ff] disabled:opacity-50"
             title="只搜索知乎回答，自己挑素材再生成"
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="11" cy="11" r="7" />
-              <path d="M21 21l-4.35-4.35" />
-            </svg>
-            找回答
+            {searching ? (
+              <>
+                <svg className="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <circle cx="12" cy="12" r="10" opacity="0.25" />
+                  <path d="M12 2a10 10 0 0110 10" />
+                </svg>
+                找回答中…
+              </>
+            ) : (
+              <>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="11" cy="11" r="7" />
+                  <path d="M21 21l-4.35-4.35" />
+                </svg>
+                找回答
+              </>
+            )}
           </button>
           <button
             onClick={() => generate()}
@@ -731,6 +767,7 @@ export default function Home() {
                 excalidrawAPI={onApiReady}
                 viewModeEnabled={false}
                 langCode="zh-CN"
+                theme="light"
                 UIOptions={{
                   canvasActions: {
                     loadScene: false,

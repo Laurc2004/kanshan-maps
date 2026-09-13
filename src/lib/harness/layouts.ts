@@ -65,7 +65,29 @@ function positions(graph: KnowledgeGraph, layout: LayoutKind, tokens: ReturnType
   const nodes = graph.nodes.slice(0, 24);
   const scale = tokens.cardScale;
   const width = CARD_W * scale, height = CARD_H * scale, gap = 80 * tokens.spacing;
-  if (layout === "debate-grid") return nodes.map((_, i) => ({ x: 60 + (i % 2) * (width + 120 * tokens.spacing), y: 220 + Math.floor(i / 2) * (height + gap), width, height }));
+  if (layout === "debate-grid") {
+    // 左右对立布局：按分组阵营分侧（组0=左、组1=右、其余组=中轴下方共识区）
+    const left: number[] = [], right: number[] = [], center: number[] = [];
+    const groupOf = (nodeId: string) => graph.groups.findIndex((grp) => grp.nodeIds.includes(nodeId));
+    nodes.forEach((node, i) => {
+      const gi = groupOf(node.id);
+      if (gi === 0) left.push(i);
+      else if (gi === 1) right.push(i);
+      else center.push(i); // 无分组或第3+组都进共识区
+    });
+    const colW = width + 60 * tokens.spacing;
+    const leftX = 80, rightX = 80 + colW * 2 + 120; // 中间留 120 分隔带
+    const boxes: Box[] = [];
+    left.forEach((idx, k) => { boxes[idx] = { x: leftX, y: 230 + k * (height + gap), width, height }; });
+    right.forEach((idx, k) => { boxes[idx] = { x: rightX, y: 230 + k * (height + gap), width, height }; });
+    const rows = Math.max(1, Math.ceil(center.length / 2));
+    center.forEach((idx, k) => { boxes[idx] = { x: leftX + colW + (k % 2) * colW, y: 230 + Math.floor(k / 2) * (height + gap), width, height }; });
+    // 共识区可能与左右列冲突时下移
+    const maxY = Math.max(left.length, right.length) * (height + gap);
+    const centerStartY = 230 + Math.max(maxY, rows * (height + gap));
+    center.forEach((idx, k) => { boxes[idx].y = centerStartY + Math.floor(k / 2) * (height + gap) - rows * (height + gap) + (centerStartY > maxY ? 0 : (height + gap)); });
+    return boxes;
+  }
   if (layout === "radial-map") {
     const cx = 760, cy = 600, radius = Math.max(680, width * Math.ceil(nodes.length / 2));
     return nodes.map((_, i) => { const angle = -Math.PI / 2 + Math.PI * 2 * i / Math.max(nodes.length, 1); return { x: cx + Math.cos(angle) * radius - width / 2, y: cy + Math.sin(angle) * radius - height / 2, width, height }; });
@@ -74,6 +96,23 @@ function positions(graph: KnowledgeGraph, layout: LayoutKind, tokens: ReturnType
   if (layout === "swimlane-roadmap") return nodes.map((node, i) => { const slot = groupSlot(graph, node.id, i); return { x: 60 + slot.group * (width + 100 * tokens.spacing), y: 210 + slot.slot * (height + gap), width, height }; });
   if (layout === "cluster-board") return nodes.map((node, i) => { const slot = groupSlot(graph, node.id, i); return { x: 80 + slot.group * (width + 150 * tokens.spacing), y: 210 + slot.slot * (height + gap), width, height }; });
   return nodes.map((_, i) => ({ x: 600 + (i % 3) * (width + 120 * tokens.spacing), y: 220 + Math.floor(i / 3) * (height + gap), width, height }));
+}
+
+// 边锚点按两卡相对位置动态选择，避免连线横穿卡片
+function anchors(from: Box, to: Box): { start: Point; end: Point } {
+  const cx1 = from.x + from.width / 2, cx2 = to.x + to.width / 2;
+  const cy1 = from.y + from.height / 2, cy2 = to.y + to.height / 2;
+  const dx = cx2 - cx1, dy = cy2 - cy1;
+  if (Math.abs(dx) >= Math.abs(dy)) {
+    // 水平为主：从右/左边中点出发
+    return dx >= 0
+      ? { start: { x: from.x + from.width, y: cy1 }, end: { x: to.x, y: cy2 } }
+      : { start: { x: from.x, y: cy1 }, end: { x: to.x + to.width, y: cy2 } };
+  }
+  // 垂直为主：从下/上边中点出发
+  return dy >= 0
+    ? { start: { x: cx1, y: from.y + from.height }, end: { x: cx2, y: to.y } }
+    : { start: { x: cx1, y: from.y }, end: { x: cx2, y: to.y + to.height } };
 }
 function render(graph: KnowledgeGraph, layout: LayoutKind): SceneElement[] {
   const spec = resolvePresentation({ layout, style: graph.presentation.palette, presentation: graph.presentation }, graph);
@@ -90,12 +129,28 @@ function render(graph: KnowledgeGraph, layout: LayoutKind): SceneElement[] {
     });
   }
   const seenEdges = new Map<string, number>();
+  // 边限流：每个节点最多连 1 条出边 + 1 条入边，只保留语义最强的关系，防止蜘蛛网
+  const outCount = new Map<string, number>(), inCount = new Map<string, number>();
   for (const edge of graph.edges) {
     const from = graph.nodes.findIndex((node) => node.id === edge.fromId), to = graph.nodes.findIndex((node) => node.id === edge.toId);
     if (from < 0 || to < 0 || !boxes[from] || !boxes[to]) continue;
+    if ((outCount.get(edge.fromId) ?? 0) >= 1 || (inCount.get(edge.toId) ?? 0) >= 1) continue;
+    outCount.set(edge.fromId, (outCount.get(edge.fromId) ?? 0) + 1);
+    inCount.set(edge.toId, (inCount.get(edge.toId) ?? 0) + 1);
     const key = `${from}-${to}`, occurrence = seenEdges.get(key) ?? 0;
     seenEdges.set(key, occurrence + 1);
-    elements.push(arrow(`edge-${key}-${occurrence}`, { x: boxes[from].x + boxes[from].width, y: boxes[from].y + boxes[from].height / 2 }, { x: boxes[to].x, y: boxes[to].y + boxes[to].height / 2 }, edge.fromId, edge.toId, tokens));
+    // 锚点按相对位置动态选择，避免直线横穿中间卡片
+    const { start, end } = anchors(boxes[from], boxes[to]);
+    elements.push(arrow(`edge-${key}-${occurrence}`, start, end, edge.fromId, edge.toId, tokens));
+  }
+  // debate-grid：阵营标签 + 中轴分隔线
+  if (layout === "debate-grid" && graph.groups.length >= 2) {
+    const labels: [string, number][] = [[graph.groups[0].label, 80], [graph.groups[1].label, 80 + (CARD_W * tokens.cardScale + 60 * tokens.spacing) * 2 + 120]];
+    for (const [label, x] of labels) {
+      elements.push(text(`side-label-${x}`, x, 180, wrap(label, tokens.titleSize, 320, 1), tokens.titleSize, tokens.palette.title, 320, tokens));
+    }
+    const midX = 80 + CARD_W * tokens.cardScale + 60 * tokens.spacing;
+    elements.push({ ...base("debate-divider", "line", { x: midX, y: 170, width: 0, height: Math.max(...boxes.map((b) => b.y + b.height), 900) - 170 }, tokens), points: [[0, 0], [0, Math.max(...boxes.map((b) => b.y + b.height), 900) - 170]], strokeStyle: "dashed", strokeWidth: 1, opacity: 60 });
   }
   return elements;
 }

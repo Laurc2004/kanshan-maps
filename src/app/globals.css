@@ -35,6 +35,7 @@ body {
   --color-primary: #0066ff;
   --color-primary-darker: #0052cc;
   --color-primary-light: #e8f0ff;
+  --color-primary-darker-light: #d8e9ff;
   --color-gray-100: #1a1a1a;
   --color-gray-40: #868e96;
   --color-gray-50: #757575;
@@ -43,6 +44,32 @@ body {
   --color-surface-lowest: #ffffff;
   --color-border: #e8e8e3;
   --ui-font: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+}
+/* 选中高亮与交互强调（默认紫 #6965db 系）全部换成知乎蓝 */
+.excalidraw .App-menu,
+.excalidraw button,
+.excalidraw .ToolIcon__keybinding,
+.excalidraw .linear-editor {
+  --color-primary: #0066ff;
+}
+.excalidraw [style*="6965db"],
+.excalidraw .excalidraw-linkIcon {
+  accent-color: #0066ff;
+}
+.excalidraw .ToolIcon:focus-within .ToolIcon__icon,
+.excalidraw .ToolIcon:hover .ToolIcon__icon {
+  background: var(--color-primary-light, #e8f0ff);
+}
+.excalidraw .selected-item {
+  background: #e8f0ff !important;
+}
+.excalidraw input[type="checkbox"]:checked,
+.excalidraw .checkbox-item input:checked + .checkbox-box {
+  accent-color: #0066ff;
+}
+.excalidraw .color-input-container input:checked + .swatch,
+.excalidraw .color-picker-swatch[aria-checked="true"] {
+  outline-color: #0066ff;
 }
 
 /* Remove only the library entry point; keep drawing tools available. */

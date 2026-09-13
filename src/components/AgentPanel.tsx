@@ -15,10 +15,17 @@ export type ChatMsg = {
   ts: number;
 };
 
-// 看山助手面板里的编排进度（阶段 + 已完成步骤 + 出错信息）
+// 编排单步记录：阶段 + 做什么 + 输入/输出摘要
+export type HarnessStep = {
+  label: string; // 中文步骤名
+  input?: string; // 该步的输入摘要
+  output?: string; // 该步的输出摘要
+};
+
+// 看山助手面板里的编排进度（阶段 + 分步输入输出 + 出错信息）
 export type HarnessProgress = {
   stage: "planning" | "searching" | "sources" | "synthesizing" | "laying_out" | "validating" | "graph" | "error";
-  steps: string[]; // 逐步累积的中文步骤描述
+  steps: HarnessStep[];
   error?: string; // stage=error 时的失败原因
 };
 
@@ -137,13 +144,17 @@ export default function AgentPanel({
               </span>
             </div>
             {progress.steps.length > 0 && (
-              <ul className="mt-2 space-y-1 text-[11px] leading-4 text-gray-600">
+              <ul className="mt-2 space-y-1.5 text-[11px] leading-4 text-gray-600">
                 {progress.steps.map((s, i) => (
                   <li key={i} className="flex items-start gap-1.5">
-                    <span className={progress.stage === "error" && i === progress.steps.length - 1 ? "text-red-500" : "text-emerald-500"}>
+                    <span className={`mt-0.5 ${progress.stage === "error" && i === progress.steps.length - 1 ? "text-red-500" : "text-emerald-500"}`}>
                       {progress.stage === "error" && i === progress.steps.length - 1 ? "✗" : "✓"}
                     </span>
-                    <span>{s}</span>
+                    <div className="min-w-0 flex-1">
+                      <p className="font-medium text-[#1a1a1a]">{s.label}</p>
+                      {s.input && <p className="break-all text-gray-400">输入 {s.input}</p>}
+                      {s.output && <p className="break-all text-gray-400">输出 {s.output}</p>}
+                    </div>
                   </li>
                 ))}
               </ul>

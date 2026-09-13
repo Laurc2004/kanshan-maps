@@ -147,6 +147,16 @@
 - [x] T2 编排步骤在看山助手展示：AgentPanel 增加 progress prop（阶段+文档数+错误信息），生成期间在面板顶部显示分步进度（规划→检索→整理素材→综合→布局→验证→完成），出错时错误就地显示在助手面板（复用 harnessStageLabel），成功后进度卡片收起
 - [x] T3 验证：synthesizer/AgentPanel 相关测试 + 全量回归（tsc/lint/测试）+ 本地生成真实问题无 title 空失败 + 提交部署
 
+### Phase 12: 找回答独立性 + 编排详情展示 + 布局逻辑性 + Agent patch 加固 — status: in_progress
+背景：用户反馈 4 项：①找回答不应影响画板/按钮 ②编排过程要看输入输出 ③智能编排图线交叉无逻辑 ④Agent 改图报 未知分组: undefined / reading 'layout'。
+- [x] F1 找回答独立 searching 态：不再 set loading，画板/一键看山/输入框不变，只找回答按钮自己转圈
+- [x] F2 编排步骤详情：HarnessStep 带 input/output 摘要（问题/关键词/素材数/图类型/节点数/标题），完成卡片保留 4 秒
+- [ ] F3 debate-grid 左右对立布局重写：按 groups 分阵营（左/右/共识中轴下方）、组标签、中轴分隔线、边锚点按相对位置动态选择、跨组边限流
+- [ ] F4 radial-map 等布局边限流 + 通用锚点选择（消除穿越卡片的线）
+- [ ] F5 synthesizer prompt：compare 场景要求输出阵营 groups（支持方/反对方/共识）并给节点分组
+- [ ] F6 patch.ts 加固：set_presentation/update_group 缺 patch 报友好错误；groupId/group undefined 报"分组 ID 缺失"；agent prompt 注入节点/分组真实 ID 白名单
+- [ ] F7 验证：patch 测试（undefined groupId、缺 patch、白名单）+ layouts 测试（对立布局语义断言：阵营分侧、无交叉锚点）+ 全量回归 + 真实生成对比 + 提交部署
+
 ## Errors Encountered
 |-------|---------|------------|
 | Excalidraw updateScene 被丢弃（setState on unmounted） | 1 | 回调后 setTimeout 300ms 再注入（已修） |
