@@ -1,3 +1,6 @@
+import type { KnowledgeGraph } from "./harness/types";
+import { knowledgeGraphToScene } from "./harness/layouts";
+import { roadmapToKnowledgeGraph, viewpointToKnowledgeGraph } from "./harness/compat";
 import type { ViewpointGraph } from "./viewpoints";
 import type { RoadmapGraph } from "./roadmap";
 
@@ -381,3 +384,16 @@ export function roadmapToScene(g: RoadmapGraph): El[] {
 
   return finalize(els);
 }
+
+/** Render unified graphs while preserving the legacy renderers above. */
+export function knowledgeGraphScene(graph: KnowledgeGraph): El[] {
+  return knowledgeGraphToScene(graph) as El[];
+}
+
+export function adaptiveGraphToScene(graph: KnowledgeGraph | ViewpointGraph | RoadmapGraph, followedAuthors: Set<string> = new Set()): El[] {
+  if ("presentation" in graph && "nodes" in graph) return knowledgeGraphScene(graph as KnowledgeGraph);
+  if ("stages" in graph) return roadmapToScene(graph as RoadmapGraph);
+  return graphToScene(graph as ViewpointGraph, followedAuthors);
+}
+
+export { roadmapToKnowledgeGraph, viewpointToKnowledgeGraph };

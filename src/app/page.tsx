@@ -5,6 +5,8 @@ import dynamic from "next/dynamic";
 import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
 import "@excalidraw/excalidraw/index.css";
 import type { ViewpointGraph } from "@/lib/viewpoints";
+import type { RoadmapGraph } from "@/lib/roadmap";
+import type { KnowledgeGraph } from "@/lib/harness/types";
 import type { SearchResultItem } from "@/lib/zhihu";
 import AgentPanel from "@/components/AgentPanel";
 import SourcesPanel, { type HotItem } from "@/components/SourcesPanel";
@@ -26,8 +28,9 @@ type Mode = "viewpoint" | "roadmap";
 // 本地缓存：graph 结构化数据（localStorage），画板元素序列化体积大放 sessionStorage
 const BOARD_KEY = "kanshan.board.v1";
 const ELEMENTS_KEY = "kanshan.elements.v1";
+type GraphState = ViewpointGraph | RoadmapGraph | KnowledgeGraph;
 type BoardCache = {
-  graph: ViewpointGraph;
+  graph: GraphState;
   mode: Mode;
   question: string;
   items?: unknown[];
@@ -40,7 +43,7 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
-  const [graph, setGraph] = useState<ViewpointGraph | null>(null);
+  const [graph, setGraph] = useState<GraphState | null>(null);
   const [graphMode, setGraphMode] = useState<Mode>("viewpoint"); // 当前画板上的图类型
   const [items, setItems] = useState<SearchResultItem[]>([]);
   const [showSources, setShowSources] = useState(true);
@@ -56,8 +59,8 @@ export default function Home() {
   const pendingRef = useRef<unknown[] | null>(null);
   const [boardMounted, setBoardMounted] = useState(false);
   const followeesRef = useRef<Set<string>>(new Set());
-  const graphRef = useRef<ViewpointGraph | null>(null);
-  const renderGraphRef = useRef<(g: ViewpointGraph, f?: Set<string>, m?: Mode) => void>(() => {});
+  const graphRef = useRef<GraphState | null>(null);
+  const renderGraphRef = useRef<(g: GraphState, f?: Set<string>, m?: Mode) => void>(() => {});
   const [showAgent, setShowAgent] = useState(true); // 右栏可收缩
   const [pendingHot, setPendingHot] = useState<string | null>(null); // 热榜确认弹窗
   const [generating, setGenerating] = useState(false); // 画板生成中遮罩
@@ -80,8 +83,8 @@ export default function Home() {
         const raw = localStorage.getItem(BOARD_KEY);
         if (!raw) return;
         const cache = JSON.parse(raw) as BoardCache;
-        const g = cache.graph as { viewpoints?: unknown[]; stages?: unknown[] } | null;
-        if (!cache.graph || !(Array.isArray(g?.viewpoints) || Array.isArray(g?.stages))) return;
+        const g = cache.graph as { viewpoints?: unknown[]; stages?: unknown[]; nodes?: unknown[]; presentation?: unknown } | null;
+        if (!cache.graph || !(Array.isArray(g?.viewpoints) || Array.isArray(g?.stages) || (Array.isArray(g?.nodes) && g.presentation))) return;
         setGraph(cache.graph);
         graphRef.current = cache.graph;
         setGraphMode(cache.mode === "roadmap" ? "roadmap" : "viewpoint");
@@ -170,7 +173,7 @@ export default function Home() {
   }, []);
 
   // 画板状态持久化：graph 放 localStorage，元素快照放 sessionStorage（体积大、跨会话不必保真）
-  const persistBoard = useCallback((g: ViewpointGraph, m: Mode, q: string, its?: SearchResultItem[]) => {
+  const persistBoard = useCallback((g: GraphState, m: Mode, q: string, its?: SearchResultItem[]) => {
     try {
       const cache: BoardCache = { graph: g, mode: m, question: q, items: its, savedAt: Date.now() };
       localStorage.setItem(BOARD_KEY, JSON.stringify(cache));
@@ -187,10 +190,12 @@ export default function Home() {
     }
   }, []);
 
-  const renderGraph = useCallback(async (g: ViewpointGraph, followed?: Set<string>, m: Mode = "viewpoint") => {
+  const renderGraph = useCallback(async (g: GraphState, followed?: Set<string>, m: Mode = "viewpoint") => {
     const layout = await import("@/lib/excalidraw-layout");
     const elements = (
-      m === "roadmap" ? layout.roadmapToScene(g as never) : layout.graphToScene(g, followed ?? followeesRef.current)
+      m === "roadmap" && "question" in g
+        ? layout.graphToScene(g, followed ?? followeesRef.current)
+        : layout.adaptiveGraphToScene(g, followed ?? followeesRef.current)
     ) as never[];
     // 新图覆盖旧缓存元素
     try {
@@ -390,7 +395,7 @@ export default function Home() {
 
   // Agent 对话修改后的 graph 回灌画板（按当前图类型选布局器）
   const applyAgentGraph = useCallback(
-    (g: ViewpointGraph) => {
+    (g: GraphState) => {
       setGraph(g);
       graphRef.current = g;
       renderGraph(g, undefined, graphMode);
@@ -637,7 +642,7 @@ export default function Home() {
         {showSources ? (
           <SourcesPanel
             items={items}
-            graph={graph}
+            graph={graph && "question" in graph ? graph : null}
             graphMode={graphMode}
             hotItems={hotItems}
             onPickHot={pickHot}
@@ -715,7 +720,8 @@ export default function Home() {
                     });
                     const a = document.createElement("a");
                     a.href = URL.createObjectURL(blob);
-                    a.download = `${((graphMode === "roadmap" ? (graph as unknown as { topic: string }).topic : graph.question) ?? "kanshan-map").slice(0, 30)}.png`;
+                    const graphTitle = graph && "question" in graph ? graph.question : graph && "topic" in graph ? graph.topic : graph?.title;
+                    a.download = `${(graphTitle ?? "kanshan-map").slice(0, 30)}.png`;
                     a.click();
                     URL.revokeObjectURL(a.href);
                   }}
@@ -782,7 +788,7 @@ export default function Home() {
         </div>
 
         {showAgent && (
-          <AgentPanel graph={graph} engine={engine} busy={loading} onApply={applyAgentGraph} onClose={() => setShowAgent(false)} />
+          <AgentPanel graph={graph && "question" in graph ? graph : null} engine={engine} busy={loading} onApply={applyAgentGraph} onClose={() => setShowAgent(false)} />
         )}
         {!showAgent && (
           <button
