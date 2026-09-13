@@ -99,3 +99,12 @@
 - 注：vision_analyze 在当前 custom provider 下 400（要 stream=true），UI 检查走 Playwright 断言替代
 - AGENTS.md 重写被权限拦截（approval timeout），待用户确认后补写（当前文件仍只有 nextjs 自动块）
 
+
+## Session 9 — 2026-09-13（Phase 10 / T11: OAuth 真实凭证接入）— in_progress
+- 用户提供 App ID/App Key 与 Skill 下载地址；官方 URL 包(79,913B)与 Downloads v260815 包 diff 确认后者为更新版（多 deployment-credentials.md 与凭证命名规范），以 v260815 为权威存档 docs/zhihu-skill/zhihu-hackathon/
+- 凭证安全边界执行：App Key 只写本地 .env + Vercel Encrypted（dev 环境不支持 sensitive 按既有经验普通添加）；代码/.env.example（本地未跟踪）/planning/日志泄漏扫描 0 命中
+- 代码变更：ZHIHU_APP_KEY → ZHIHU_OAUTH_APP_KEY（对齐 Skill 命名规范防串位）；ZHIHU_TOKEN_URL 测试专用覆盖（默认官方端点）
+- 测试：新增 oauth-scenarios.test.ts 六场景（node --test 真实 HTTP 打 next start 双实例 3001 配置/3002 空覆盖）6/6 PASS；tsc/lint/harness 回归全过
+- 部署：388a6ca 推送；生产 Ready；验证 /api/auth/login 307 → openapi.zhihu.com/authorize?app_id=436&redirect_uri=https://kanshan-maps.vercel.app/api/auth/callback ✅
+- 遗留门：真实授权联调需用户本人在 https://kanshan-maps.vercel.app 点击登录并确认知乎授权页（Skill 明确 Agent 不代点）
+- 用户已在活动页登记回调（2026-09-13）；curl 验证 openapi.zhihu.com/authorize 对 app_id=436 + redirect_uri=kanshan-maps.vercel.app/api/auth/callback 返回 302 到正常登录页（未报回调非法）→ 登记生效确认
