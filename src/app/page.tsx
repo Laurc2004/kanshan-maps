@@ -14,8 +14,7 @@ import SourcesPanel, { type HotItem } from "@/components/SourcesPanel";
 import { requestClearBoard } from "@/lib/board-actions";
 import HarnessStatus from "@/components/HarnessStatus";
 import SourceIndex from "@/components/SourceIndex";
-import SharePanel from "@/components/SharePanel";
-import PresentationControls from "@/components/PresentationControls";
+import { BoardPresentationControls, BoardShareButtons } from "@/components/BoardControls";
 import ProfileCenter from "@/components/ProfileCenter";
 import { collectKnowledgeSources } from "@/lib/knowledge-assets";
 import { applyPresentation } from "@/lib/presentation-controls";
@@ -174,41 +173,6 @@ export default function Home() {
   }, [me.loggedIn]);
 
   // 用收藏夹内容生成学习路线：素材 = 收藏夹内的回答/文章
-  const generateFromFavlist = useCallback(
-    async (urlToken: number, title: string) => {
-      if (favlistLoading || loading) return;
-      setFavlistLoading(true);
-      setError(null);
-      try {
-        const r = await fetch(`/api/me/favlist-contents?urlToken=${urlToken}`);
-        const d = await r.json();
-        if (!r.ok) throw new Error(d.error || "收藏夹内容获取失败");
-        const items = (d.items ?? []) as SearchResultItem[];
-        if (items.length === 0) throw new Error("这个收藏夹里没有可用的文字内容（回答/文章）");
-        setQuestion(`收藏夹「${title}」的学习路线`);
-        setMode("roadmap");
-        setPendingItems(items); // generate effect 会在 question/mode 落定后消费
-      } catch (e) {
-        setError(e instanceof Error ? e.message : "收藏夹读取失败");
-      } finally {
-        setFavlistLoading(false);
-      }
-    },
-    [favlistLoading, loading]
-  );
-  const openFavlist = useCallback(async (favlist: { urlToken: number; title: string; description: string }) => {
-    if (favlistLoading) return;
-    setActiveFavlist(favlist); setFavlistLoading(true); setError(null);
-    try {
-      const response = await fetch(`/api/me/favlist-contents?urlToken=${favlist.urlToken}`);
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "收藏夹内容获取失败");
-      const next = (data.items ?? []) as SearchResultItem[];
-      setFavlistItems(next); setSelectedFavlistIds(new Set(next.map((item) => item.ContentID)));
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "收藏夹读取失败"); setFavlistItems([]); setSelectedFavlistIds(new Set()); }
-    finally { setFavlistLoading(false); }
-  }, [favlistLoading]);
-
   // 稳定引用：excalidrawAPI 回调不随 state 变化重建（避免重复挂载双实例）
   const onApiReady = useCallback((api: ExcalidrawImperativeAPI) => {
     apiRef.current = api;
@@ -566,6 +530,19 @@ export default function Home() {
     [generate, loading]
   );
 
+  const openFavlist = useCallback(async (favlist: { urlToken: number; title: string; description: string }) => {
+    if (favlistLoading) return;
+    setActiveFavlist(favlist); setFavlistLoading(true); setError(null);
+    try {
+      const response = await fetch(`/api/me/favlist-contents?urlToken=${favlist.urlToken}`);
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "收藏夹内容获取失败");
+      const next = (data.items ?? []) as SearchResultItem[];
+      setFavlistItems(next); setSelectedFavlistIds(new Set(next.map((item) => item.ContentID)));
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "收藏夹读取失败"); setFavlistItems([]); setSelectedFavlistIds(new Set()); }
+    finally { setFavlistLoading(false); }
+  }, [favlistLoading]);
+
   const generateFavlistSelection = useCallback((nextMode: "roadmap" | "summary") => {
     if (!activeFavlist) return;
     const picked = favlistItems.filter((item) => selectedFavlistIds.has(item.ContentID));
@@ -598,20 +575,33 @@ export default function Home() {
     }, 0);
   }, [pendingHot]);
 
+  // 画板导出 PNG（带水印）：供画板内嵌的保存图片按钮使用
+  const makePng = useCallback(async () => {
+    const els = apiRef.current?.getSceneElements() ?? [];
+    const { exportToBlob } = await import("@excalidraw/excalidraw");
+    const blob = await exportToBlob({ elements: els, appState: { exportWithDarkMode: false, exportBackground: true }, files: apiRef.current?.getFiles?.(), exportPadding: 32, getDimensions: (w: number, h: number) => ({ width: w * 2, height: h * 2, scale: 2 }) });
+    return addWatermark(blob);
+  }, []);
+
   // Agent 对话修改后的 graph 回灌画板（按当前图类型选布局器）
   // appliedLabels 用于局部渲染决策：纯文字/强调类修改保留用户坐标，结构类才整体重排
   const applyAgentGraph = useCallback(
     (g: GraphState, appliedLabels?: string[]) => {
-      const nextMode: Mode = "stages" in g ? "roadmap" : "compare";
+      const previous = graphRef.current;
+      const nextMode: Mode = "stages" in g ? "roadmap" : graphMode;
+      // presentation 任一视觉字段（版式/密度/层级/调色/线条）变化都视为几何变化，必须全量重渲染
+      const geometryChanged = "presentation" in g && (!previous || !(("presentation") in previous) || (["layout", "density", "hierarchy", "palette", "stroke"] as const).some((key) => JSON.stringify(g.presentation[key as keyof typeof g.presentation]) !== JSON.stringify(previous.presentation[key as keyof typeof previous.presentation])));
       setGraph(g);
       graphRef.current = g;
       setGraphMode(nextMode);
       const labels = (appliedLabels ?? []).join(" ");
       // 局部安全：标题/强调/风格/精简描述 不影响布局 → 保留用户手动排版
       // 结构变化（删除/合并/移动/重排）→ 全量重排防重叠
+      // 结构性修改或视觉参数变化必须整体重排；文字修改沿用用户坐标
       const structural =
         /删除|合并|移动|移出|重排|重新布局/.test(labels) ||
-        appliedLabels === undefined; // 未知操作类型时保守全量重排
+        geometryChanged ||
+        appliedLabels === undefined;
       if (!structural && apiRef.current) {
         // 只更新文字/样式：用同一布局器重新生成元素，但保留旧坐标
         (async () => {
@@ -635,7 +625,7 @@ export default function Home() {
       renderGraph(g, undefined, nextMode);
       persistBoard(g, nextMode, "question" in g ? g.question : "nodes" in g ? g.title : g.topic);
     },
-    [renderGraph, persistBoard]
+    [renderGraph, persistBoard, graphMode]
   );
 
   return (
@@ -694,6 +684,22 @@ export default function Home() {
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M8 10h.01M12 10h.01M16 10h.01M21 12a9 9 0 01-9 9 9 9 0 01-4-.8L3 21l1-3.2A9 9 0 1121 12z" />
               </svg>
+            </button>
+            <button
+              onClick={() => setShowProfile((v) => !v)}
+              disabled={!me.loggedIn}
+              title={me.loggedIn ? "个人中心（收藏夹 / 本机地图 / 关注）" : "登录后可用"}
+              className={`flex items-center gap-1.5 rounded-full border p-2 transition disabled:cursor-not-allowed disabled:opacity-30 ${
+                showProfile && me.loggedIn
+                  ? "border-[#0066ff]/30 bg-[#f0f5ff] text-[#0066ff]"
+                  : "border-gray-200 text-gray-400 hover:border-[#0066ff]/30 hover:text-[#0066ff]"
+              }`}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" />
+                <circle cx="12" cy="7" r="4" />
+              </svg>
+              <span className="hidden text-xs font-medium lg:inline">个人中心</span>
             </button>
             <button
               onClick={() => setPendingClear(true)}
@@ -764,14 +770,21 @@ export default function Home() {
         <div className="flex items-center gap-2 border-t border-[#f0f0ec] px-4 py-2">
           <input
             value={question}
-            onChange={(e) => setQuestion(e.target.value)}
+            onChange={(e) => {
+              setQuestion(e.target.value);
+              // 粘贴知乎链接 → 自动切到文章摘要模式（服务端会抓取该链接直接总结）
+              const pasted = e.target.value;
+              if (/^https?:\/\/(www\.zhihu\.com|zhuanlan\.zhihu\.com)\//i.test(pasted.trim())) {
+                setMode((m) => (m === "summary" ? m : "summary"));
+              }
+            }}
             onKeyDown={(e) => e.key === "Enter" && generate()}
             placeholder={
               mode === "roadmap"
                 ? "输入学习目标或领域，如：我想做出一个能用的 Agent"
                 : mode === "summary"
-                  ? "输入主题，先找回答并勾选要总结的文章"
-                  : "输入有争议的问题，如：年轻人该不该买房"
+                  ? "输入主题，或直接粘贴知乎文章/回答链接"
+                  : "输入有争议的问题，如：年轻人该不该买房；也可粘贴知乎链接"
             }
             className="min-w-0 flex-1 rounded-full border border-gray-200 bg-[#fafaf7] py-2 pl-4 pr-3 text-sm outline-none transition focus:border-[#0066ff]/60 focus:bg-white focus:shadow-sm"
             disabled={loading}
@@ -826,28 +839,6 @@ export default function Home() {
       {authNotice && (
         <div className="shrink-0 bg-amber-50 px-5 py-1.5 text-xs text-amber-700">{authNotice}</div>
       )}
-
-      {/* 收藏夹学习路线入口：登录 + roadmap 模式时展示 */}
-      {me.loggedIn && mode === "roadmap" && favlists.length > 0 && (
-        <div className="shrink-0 border-b border-[#e8e8e3] bg-[#f8f9ff] px-5 py-2">
-          <div className="flex items-center gap-2 overflow-x-auto text-xs">
-            <span className="shrink-0 text-gray-500">📚 从收藏夹生成学习路线：</span>
-            {favlists.map((f) => (
-              <button
-                key={f.urlToken}
-                onClick={() => generateFromFavlist(f.urlToken, f.title)}
-                disabled={loading || favlistLoading}
-                title={f.description || f.title}
-                className="shrink-0 rounded-full border border-[#0066ff]/30 bg-white px-3 py-1 text-[#0066ff] transition hover:border-[#0066ff] hover:bg-[#f0f5ff] disabled:opacity-50"
-              >
-                {favlistLoading ? "读取中…" : f.title}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {showProfile && me.loggedIn && <ProfileCenter name={me.name} boards={savedBoards} favlists={favlists} followees={followeeNames} busy={loading} favlistLoading={favlistLoading} activeFavlist={activeFavlist} favlistItems={favlistItems} selectedIds={selectedFavlistIds} onClose={() => setShowProfile(false)} onOpenBoard={openSavedBoard} onDeleteBoard={(id) => setSavedBoards(deleteBoard(localStorage, id))} onOpenFavlist={openFavlist} onToggleItem={(id) => setSelectedFavlistIds((current) => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next; })} onGenerateFavlist={generateFavlistSelection} />}
 
       {/* 引擎设置（可折叠） */}
       {showEngineCfg && (
@@ -919,7 +910,9 @@ export default function Home() {
       {/* 三栏工作区：显式像素高度 + contain，Excalidraw 高度才不会失控 */}
       <div className="flex min-h-0 flex-1">
         {/* 左栏：展开=面板；收起=细条（点击细条重新展开），与右栏交互一致 */}
-        {showSources ? (
+        {showProfile && me.loggedIn ? (
+      <ProfileCenter name={me.name} boards={savedBoards} favlists={favlists} followees={followeeNames} busy={loading} favlistLoading={favlistLoading} activeFavlist={activeFavlist} favlistItems={favlistItems} selectedIds={selectedFavlistIds} onClose={() => setShowProfile(false)} onOpenBoard={openSavedBoard} onDeleteBoard={(id) => setSavedBoards(deleteBoard(localStorage, id))} onOpenFavlist={openFavlist} onToggleItem={(id) => setSelectedFavlistIds((current) => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next; })} onGenerateFavlist={generateFavlistSelection} />
+        ) : showSources ? (
           <SourcesPanel
             items={items}
             graph={graph && "question" in graph ? graph : null}
@@ -954,6 +947,12 @@ export default function Home() {
                 viewModeEnabled={false}
                 langCode="zh-CN"
                 theme="light"
+                renderTopRightUI={() => (
+                  <div className="ks-board-ui flex items-center gap-1.5" data-testid="board-topright-ui">
+                    {graph && <BoardPresentationControls graph={graph} busy={loading} onChange={changePresentation} />}
+                    {graph && <BoardShareButtons graph={graph} makePng={makePng} />}
+                  </div>
+                )}
                 onPointerDown={(_tool, pointerDownState) => {
                   // 卡片链接点击：hit 元素带 link 时新标签打开原文
                   const hit = pointerDownState.hit.element;
@@ -991,46 +990,8 @@ export default function Home() {
                   </div>
                 </div>
               )}
-              {/* 画板来源索引与分享：链接只在非编辑手势下打开 */}
+              {/* 画板来源索引：链接只在非编辑手势下打开 */}
               {graph && <SourceIndex sources={collectKnowledgeSources(graph, items)} />}
-              {graph && <PresentationControls graph={graph} busy={loading} onChange={changePresentation} />}
-              {graph && <SharePanel graph={graph} makePng={async () => {
-                const els = apiRef.current?.getSceneElements() ?? [];
-                const { exportToBlob } = await import("@excalidraw/excalidraw");
-                const blob = await exportToBlob({ elements: els, appState: { exportWithDarkMode: false, exportBackground: true }, files: apiRef.current?.getFiles?.(), exportPadding: 32, getDimensions: (w: number, h: number) => ({ width: w * 2, height: h * 2, scale: 2 }) });
-                return addWatermark(blob);
-              }} />}
-              {/* 画板右下角：导出 PNG（Excalidraw Island 风格按钮） */}
-              {graph && (
-                <button
-                  onClick={async () => {
-                    const els = apiRef.current?.getSceneElements() ?? [];
-                    if (els.length === 0) return;
-                    const { exportToBlob } = await import("@excalidraw/excalidraw");
-                    // 按元素实际包围盒自适应导出，绝不裁内容；2x 高清
-                    const blob = await exportToBlob({
-                      elements: els,
-                      appState: { exportWithDarkMode: false, exportBackground: true },
-                      files: apiRef.current?.getFiles?.(),
-                      exportPadding: 32,
-                      getDimensions: (w: number, h: number) => ({ width: w * 2, height: h * 2, scale: 2 }),
-                    });
-                    const a = document.createElement("a");
-                    a.href = URL.createObjectURL(blob);
-                    const graphTitle = graph && "question" in graph ? graph.question : graph && "topic" in graph ? graph.topic : graph?.title;
-                    a.download = `${(graphTitle ?? "kanshan-map").slice(0, 30)}.png`;
-                    a.click();
-                    URL.revokeObjectURL(a.href);
-                  }}
-                  className="ks-export-btn absolute bottom-3 right-3 z-10 flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-500 transition hover:text-[#0066ff]"
-                  title="导出 PNG 图片"
-                >
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3" />
-                  </svg>
-                  导出图片
-                </button>
-              )}
             </>
           ) : (
             <div className="relative flex h-full flex-col items-center justify-center gap-6 text-center">

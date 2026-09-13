@@ -21,5 +21,5 @@ export function parseSummaryJson(raw: string, title: string, items: SearchResult
     return { id: `summary-${index + 1}`, label: String(p.title).slice(0, 40), description: String(p.detail).slice(0, 180), citations: sourceIndexes.map((i) => `source-${i}`).filter((id) => citations.some((c) => c.id === id)) };
   }).filter((node): node is NonNullable<typeof node> => !!node);
   if (nodes.length === 0) throw new Error("总结结果没有带真实来源的有效要点");
-  return { kind: "cluster-board", title: String(value.title ?? title).slice(0, 80) || title, summary: String(value.summary ?? "").slice(0, 240), nodes, edges: [], groups: [{ id: "summary", label: "文章总结", nodeIds: nodes.map((n) => n.id) }], citations, presentation: { layout: "cluster-board", palette: "paper-pastel", density: "comfortable", stroke: "sketch", hierarchy: { title: 1.2, keyFinding: 1, evidence: 0.9 } } };
+  return { kind: "cluster-board", title: String(value.title ?? title).slice(0, 80) || title, summary: String(value.summary ?? "").slice(0, 240), nodes, edges: [], groups: [{ id: "summary", label: "文章总结", nodeIds: nodes.map((n) => n.id) }], citations, presentation: { layout: "evidence-tree", palette: "paper-pastel", density: "comfortable", stroke: "sketch", hierarchy: { title: 1.2, keyFinding: 1, evidence: 0.9 } }, metadata: { mode: "summary" } };
 }

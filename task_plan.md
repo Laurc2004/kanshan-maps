@@ -204,6 +204,13 @@
 | vision_analyze 400（custom provider 不支持非流式图片请求） | 1 | 改用 Playwright 程序化 UI 检查（溢出/图片/布局/背景色断言） |
 | curl localhost 打到旧 dev server | 1 | 旧进程占 3000，新 server 在 3001；以 process log 为准 |
 
+## Phase 19: 摘要结构与工作区修复 — status: in_progress
+- [x] 摘要改为中心主题 + 左右分支思维导图结构；观点对照/学习路线移除画布内来源脚注、作者和原帖提示，统一由底部来源索引展示。
+- [x] 删除画布右下角旧“导出图片/保存图片”按钮；分享知乎展开菜单仅保留复制文案和系统分享。
+- [x] 个人中心改为左侧栏，与素材栏互斥，收藏夹、地图和关注内容集中展示，移除顶部重复收藏夹入口。
+- [x] Agent 视觉修改：版式/密度/布局变更强制全量重绘，文字修改保留坐标；补齐风格关键词和总结模式识别。
+- [x] 验证：147 tests / 141 pass / 0 fail / 6 OAuth skips；tsc、lint、build、diff check 全通过。
+
 ## Phase 18: 知识资产与分享闭环 — status: in_progress
 目标：修复看山助手缺少图数据，并上线观点对照/学习路线/文章总结、个人中心、知乎分享闭环。
 
@@ -238,6 +245,21 @@
 - [x] 18.5 Summary: stream route supports one-call source-grounded summary parsing with URL whitelist and summary-board graph; local implementation and route validation pass. Real summary-model browser generation remains limited by no deterministic browser automation profile in this session.
 - [x] 18.6 Share: helper covers cited copy, safe filename, cancellation classification, clipboard/download/watermark primitives; panel integration present.
 - [x] 18.7 Release: full Node runner, typecheck, lint, build, diff check, local production HTTP/API smoke, Playwright desktop/mobile UI smoke, commit/push, Vercel production deploy and public readback.
+
+## Phase 20: 八项反馈修复轮（摘要思维导图 / 按钮入画板 / Agent 视觉 / 个人中心侧栏 / 去画布来源 / 知乎链接输入 / 版式修复）— status: in_progress
+背景：Phase 19 未提交改动在树上的基础上，用户提出 8 项。分工：逻辑（glm 5.3=本会话模型）负责诊断+实现，样式细节可再派 kimi k3 子代理润色。
+- [x] 0 只读诊断（glm 5.3 子代理 deleg_396d75ce 完成 6 项根因报告；k3 重复诊断已叫停）
+- [x] 1 文章摘要长图 → evidence-tree 思维导图：左右对称分支+垂直居中修正+根节点居中（layouts.ts summary 分支重写）；顺手修 debate-grid 共识区与侧列重叠 bug
+- [x] 2 底部「保存图片」按钮移除；「一键分享至知乎」+「保存图片」经 renderTopRightUI 嵌入 Excalidraw（新组件 BoardControls.tsx；SharePanel.tsx / PresentationControls.tsx 删除）
+- [x] 3 看山助手视觉修改：presentation 变化字段扩展为 layout/density/hierarchy/palette/stroke 全量触发重渲染（page.tsx geometryChanged）；模型路径 CHANGE_INSTRUCTION 补 layout 选项（decide.ts）；router.ts 规则已含思维导图/蓝色分支
+- [x] 4 顶部栏新增「个人中心」按钮（清空按钮左侧，图标+文字，登录后可用）；ProfileCenter 重写为 地图/收藏夹/关注 三 tab 左侧栏，与素材栏互斥
+- [x] 5 画布内来源文字（Phase 19 已删 ↗原文/作者/脚注，本轮补 debate-grid 共识重叠修复）；底部 SourceIndex 保持唯一来源展示
+- [x] 6 版式/颜色控件嵌入 Excalidraw renderTopRightUI（不再外层浮层，消除遮挡）；布局标签「证据树」→「思维导图」
+- [x] 7 知乎链接直达：zhihu.ts 新增 isZhihuUrl/parseZhihuArticleHtml/fetchZhihuArticleByUrl；stream 路由识别 URL 强制 summary；输入框粘贴链接自动切摘要模式；新增 zhihu-url.test.ts 4 测试
+  - ⚠️ 外部限制：知乎 WAF 对服务器端直抓 zhuanlan/zhihu.com 一律 403（本机 curl 同样 403，非代码问题）。抓取链路逻辑已就绪并有离线测试，浏览器端可访问的链接在无 WAF 环境（如本地 dev + 用户登录态 cookie 场景）可用；生产直抓需要知乎官方内容 API 支持按 URL 取文（黑客松 API 无此端点）或代理层
+- [x] 8 验证：tsc 0 错 / 152 tests（146 pass 0 fail 6 OAuth skip）/ lint 0 error（4 warning 为既有）/ build 16 路由全过 / 本地 next start 首页 200 + URL 分支正确触发（假 ID 返回友好 403 错误事件）
+- [ ] 9 样式细节 kimi k3 润色（BoardControls 视觉/ProfileCenter tab 打磨）+ E2E 浏览器冒烟（可选）
+- [ ] 10 用户验收后提交
 
 ## Phase 17: 双模式 Harness + Agent 2.0 + 个性化实施 — status: complete
 - [x] A 双模式收缩（compare/roadmap，隐藏 auto）

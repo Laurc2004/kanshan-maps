@@ -237,11 +237,11 @@ export function graphToScene(g: ViewpointGraph, followedAuthors: Set<string> = n
   const cards = vs.map((v, i) => {
     const followed = v.authors.some((a) => followedAuthors.has(a));
     const stanceT = block(0, 0, TEXT_W, `${followed ? "★ " : ""}${v.stance}`, 21, colors.strokes[i % 4], "left", 1);
-    const authorsT = block(0, 0, TEXT_W, v.authors.slice(0, 3).join(" · "), 13, colors.muted, "left", 1);
+    const authorsT = block(0, 0, TEXT_W, "", 13, colors.muted, "left", 1);
     const summaryT = block(0, 0, TEXT_W, v.summary, 14, colors.title, "left", 4);
     const evidences = (v.evidence ?? []).slice(0, 2).map((ev) => block(0, 0, TEXT_W - 14, `· ${ev}`, 12, colors.muted, "left", 2));
     const inner =
-      18 + stanceT.height + 6 + authorsT.height + 10 + summaryT.height + 10 +
+      18 + stanceT.height + 6 + 10 + summaryT.height + 10 +
       evidences.reduce((a, e) => a + e.height + 4, 0) + 18;
     return { v, i, followed, stanceT, authorsT, summaryT, evidences, height: Math.max(200, inner) };
   });
@@ -269,9 +269,7 @@ export function graphToScene(g: ViewpointGraph, followedAuthors: Set<string> = n
 
     let cy = p.y + 18;
     els.push({ ...c.stanceT.el, x: p.x + 22, y: cy });
-    cy += c.stanceT.height + 6;
-    els.push({ ...c.authorsT.el, x: p.x + 22, y: cy });
-    cy += c.authorsT.height + 10;
+    cy += c.stanceT.height + 16;
     els.push({ ...c.summaryT.el, x: p.x + 22, y: cy });
     cy += c.summaryT.height + 10;
     c.evidences.forEach((e) => {
@@ -304,14 +302,7 @@ export function graphToScene(g: ViewpointGraph, followedAuthors: Set<string> = n
     els.push(curveArrow(W / 2, qY + qH + 6, W / 2, cy0 - 6, colors.consensusStroke, 0, 2));
   }
 
-  // 来源脚注
-  const srcs = vs.flatMap((v) => v.sources).slice(0, 6);
-  if (srcs.length > 0) {
-    const sy = maxY + 90 + (g.consensus.length > 0 ? Math.max(64, 18 + g.consensus.slice(0, 4).length * (13 * LINE_H + 6) + 14) + 40 : 20);
-    els.push(
-      block(X0, sy, 1200, srcs.map((s, i) => `[${i + 1}] ${s}`).join("\n"), 11, MUTED, "left", 6).el,
-    );
-  }
+  // 来源统一展示在画布外的来源索引中，避免地图变成长图。
 
   return finalize(els);
 }
@@ -348,8 +339,8 @@ export function roadmapToScene(g: RoadmapGraph): El[] {
     const items = stage.items.slice(0, 4).map((it) => {
       const topicT = block(0, 0, NODE_TEXT_W, it.topic, 15, TITLE_COLOR, "left", 1);
       const detailT = block(0, 0, NODE_TEXT_W, it.detail, 12, MUTED, "left", 3);
-      const srcT = it.source ? block(0, 0, NODE_TEXT_W, "→ 原帖", 11, stroke, "left", 1) : null;
-      const h = 14 + topicT.height + 4 + detailT.height + (srcT ? srcT.height + 2 : 0) + 12;
+      const srcT = null;
+      const h = 14 + topicT.height + 4 + detailT.height + 0 + 12;
       return { it, topicT, detailT, srcT, h: Math.max(86, h) };
     });
 
@@ -371,7 +362,7 @@ export function roadmapToScene(g: RoadmapGraph): El[] {
       iy += n.topicT.height + 4;
       els.push({ ...n.detailT.el, x: x + 28, y: iy });
       iy += n.detailT.height;
-      if (n.srcT) els.push({ ...n.srcT.el, x: x + 28, y: iy + 2 });
+      // 来源统一展示在画布外的来源索引中。
       ny += n.h + NODE_GAP;
     });
   });

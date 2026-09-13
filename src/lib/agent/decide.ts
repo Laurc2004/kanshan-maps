@@ -17,7 +17,7 @@ const CHANGE_INSTRUCTION = `你是知识图编辑助手。根据用户意图输�
 - {"type":"remove_nodes","nodeIds":["..."],"reasons":["每个节点的删除理由"]}
 - {"type":"merge_nodes","nodeIds":["...","..."],"targetLabel":"...","description":"..."}
 - {"type":"rewrite_consensus","items":["..."]}
-- {"type":"set_presentation","patch":{"palette":"zhihu-blue|paper-pastel|research-mono|poster-bold|nature-notes","density":"compact|comfortable|spacious","stroke":"clean|sketch|marker"}}
+- {"type":"set_presentation","patch":{"palette":"zhihu-blue|paper-pastel|research-mono|poster-bold|nature-notes","density":"compact|comfortable|spacious","stroke":"clean|sketch|marker","layout":"debate-grid|radial-map|timeline|swimlane-roadmap|cluster-board|evidence-tree"}}
 - {"type":"relayout","scope":"local|all"}
 规则：
 - nodeId/groupId 只能用下方给出的真实 ID，禁止编造

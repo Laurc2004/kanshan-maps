@@ -16,6 +16,9 @@
 - Local production HTTP/API smoke on `127.0.0.1:3218`: homepage 200, auth/me 200 logged-out, unauthenticated favlists 401, Agent missing graph 400, stream missing question 400.
 - Real configured model smoke: compare query `考研还是就业` returned HTTP 200 SSE with 10 real Zhihu sources, a four-viewpoint graph, and `done`; no fake upstream fixture was used.
 - Playwright Chromium smoke at desktop 1440×1000 and iPhone 13 viewport loaded compare/roadmap/summary controls and Agent UI with zero page errors. Hermes real-profile browser was unavailable because its Chrome profile databases were locked, so authenticated profile-only UI and a fully automated summary/share click chain were not claimed.
+- Production deploy: `npx vercel --prod --yes` completed with `readyState: READY`, deployment `dpl_21AxwiqtAQddV8Fs8Ebw2xgc8rYh`, deployment URL `https://kanshan-maps-dljspkvkc-liurc2004.vercel.app`, and alias `https://kanshan-maps.vercel.app`.
+- Public readback: canonical homepage 200 with title `一图看山 — 把知乎回答炼成知识地图`; `/api/auth/me` returns `{"loggedIn":false}`; unauthenticated `/api/me/favlists` returns 401 with `未登录`.
+- Vercel build emitted peer-dependency warnings for Excalidraw's Radix React 16-18 peer range, but build completed and deployment reached READY.
 
 
 ## Session 8 — 2026-09-12（Phase 10: Harness 架构设计）— in_progress
@@ -179,3 +182,10 @@
 - 新增：个人中心面板（登录后点用户名展开），展示收藏夹列表（一键生成路线）+ 关注的人说明。
 - 验证：129 tests / 123 pass / 0 fail；lint 0 error；tsc clean；build 通过。
 - 部署：kanshan-maps-ccqrvx628-liurc2004.vercel.app ● READY (Production)
+
+## Session 20 — 2026-09-14（Phase 20: 八项反馈修复轮）— 待用户验收
+- 诊断：glm 5.3 子代理只读报告 6 项根因；树上 Phase 19 未提交改动已覆盖部分诉求（画布来源文字、摘要 evidence-tree 雏形）
+- 实施：摘要思维导图左右对称分支+根居中；debate-grid 共识区重叠修复；分享/保存/版式/颜色四控件统一嵌入 Excalidraw renderTopRightUI（新 BoardControls.tsx，删 SharePanel/PresentationControls）；Agent 视觉变化判定扩至 palette/stroke + 模型 prompt 补 layout；顶栏新增个人中心入口 + ProfileCenter 三 tab 重写；知乎 URL 直达（isZhihuUrl/parseZhihuArticleHtml/fetchZhihuArticleByUrl + stream 分支 + 输入框自动切模式）
+- 验证：npx tsc --noEmit 0 错；node --test 全量 152 tests / 146 pass / 0 fail / 6 skip（新增 summary 思维导图布局 + zhihu-url 4 项）；npm run lint 0 error（4 warning 均为既有 docs/与 router.ts ctx 未用）；npm run build 16 路由全过；本地 next start 3218 首页 200；URL 分支冒烟：假文章 ID → 友好错误事件「知乎返回 403，暂时读不了这个链接」
+- 外部限制（如实记录）：知乎 WAF 对服务器端直抓内容页一律 403（curl 直测同样 403，zhuanlan 与 api/v4 都被拦）。链接解析/summary 管线代码与离线测试就绪；生产可用性取决于能否经官方 API 或带登录态环境取正文
+- 终端探测命令两次被审批拦截，未重试；生产部署与提交等用户验收后进行

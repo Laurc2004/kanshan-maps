@@ -57,10 +57,6 @@ function card(node: KnowledgeNode, box: Box, index: number, tokens: ReturnType<t
   const body = wrap(node.description, tokens.evidenceSize, innerWidth, 4);
   const elements = [{ ...base(id, "rectangle", box, tokens), backgroundColor: fill, strokeColor: stroke, strokeWidth: node.emphasis === "high" ? tokens.strokeWidth + 1 : tokens.strokeWidth, link: link ?? null, customData: { nodeId: node.id } }, text(`${id}-title`, box.x + 20, box.y + 20, title, tokens.keyFindingSize, stroke, innerWidth, tokens)];
   if (body) elements.push(text(`${id}-body`, box.x + 20, box.y + 76, body, tokens.evidenceSize, tokens.palette.body, innerWidth, tokens));
-  // 有原文链接时给"↗ 原文"提示行（Excalidraw link 元素自带角标，点击由前端 onPointerDown 打开）
-  if (link) {
-    elements.push(text(`${id}-link`, box.x + 20, box.y + box.height - 34, "↗ 原文", tokens.evidenceSize - 2, stroke, innerWidth, tokens));
-  }
   return elements;
 }
 function groupSlot(graph: KnowledgeGraph, nodeId: string, index: number): { group: number; slot: number } {
@@ -88,12 +84,9 @@ function positions(graph: KnowledgeGraph, layout: LayoutKind, tokens: ReturnType
     const boxes: Box[] = [];
     left.forEach((idx, k) => { boxes[idx] = { x: leftX, y: 230 + k * (height + gap), width, height }; });
     right.forEach((idx, k) => { boxes[idx] = { x: rightX, y: 230 + k * (height + gap), width, height }; });
-    const rows = Math.max(1, Math.ceil(center.length / 2));
-    center.forEach((idx, k) => { boxes[idx] = { x: leftX + colW + (k % 2) * colW, y: 230 + Math.floor(k / 2) * (height + gap), width, height }; });
-    // 共识区可能与左右列冲突时下移
-    const maxY = Math.max(left.length, right.length) * (height + gap);
-    const centerStartY = 230 + Math.max(maxY, rows * (height + gap));
-    center.forEach((idx, k) => { boxes[idx].y = centerStartY + Math.floor(k / 2) * (height + gap) - rows * (height + gap) + (centerStartY > maxY ? 0 : (height + gap)); });
+    // 共识/无分组节点：严格放在左右阵营列下方，两列铺开（构造性防重叠，不与侧列冲突）
+    const sideBottom = 230 + Math.max(left.length, right.length, 1) * (height + gap);
+    center.forEach((idx, k) => { boxes[idx] = { x: leftX + (k % 2) * colW, y: sideBottom + Math.floor(k / 2) * (height + gap), width, height }; });
     return boxes;
   }
   if (layout === "radial-map") {
@@ -107,6 +100,19 @@ function positions(graph: KnowledgeGraph, layout: LayoutKind, tokens: ReturnType
   if (layout === "swimlane-roadmap") return nodes.map((node, i) => { const slot = groupSlot(graph, node.id, i); return { x: 60 + slot.group * (width + 100 * tokens.spacing), y: 210 + slot.slot * (height + gap), width, height }; });
   if (layout === "cluster-board") return nodes.map((node, i) => { const slot = groupSlot(graph, node.id, i); return { x: 80 + slot.group * (width + 150 * tokens.spacing), y: 210 + slot.slot * (height + gap), width, height }; });
   if (layout === "evidence-tree") {
+    if (graph.metadata?.mode === "summary") {
+      // 思维导图：中心主题 + 左右对称分支（左侧奇数、右侧偶数交替），紧凑防长图
+      const rows = Math.ceil(nodes.length / 2);
+      const leftCount = Math.ceil(nodes.length / 2), rightCount = Math.floor(nodes.length / 2);
+      return nodes.map((_, i) => {
+        const isLeft = i % 2 === 0;
+        const k = isLeft ? Math.floor(i / 2) : Math.floor(i / 2);
+        // 垂直居中：短的一侧整体上移，让中心节点两侧视觉平衡
+        const sideCount = isLeft ? leftCount : rightCount;
+        const offset = (rows - sideCount) * (height + gap) / 2;
+        return { x: isLeft ? 60 : width + 620, y: 260 + offset + k * (height + gap), width, height };
+      });
+    }
     // 子节点在 root 右侧双列竖排（root 宽 420）
     const rootRight = 480 + 60;
     return nodes.map((_, i) => ({ x: rootRight + (i % 2) * (width + 60), y: 210 + Math.floor(i / 2) * (height + 40), width, height }));
@@ -149,11 +155,21 @@ function render(graph: KnowledgeGraph, layout: LayoutKind): SceneElement[] {
   };
   boxes.forEach((box, i) => elements.push(...card(graph.nodes[i], box, i, tokens, i + (layout === "cluster-board" ? 1 : 0), nodeLink(graph.nodes[i]))));
   if (layout === "evidence-tree") {
-    const root = { x: 60, y: 260, width: 420, height: 130 };
-    elements.unshift({ ...base("evidence-root", "ellipse", root, tokens), backgroundColor: tokens.palette.accentFill, strokeColor: tokens.palette.accentStroke }, text("evidence-root-text", 90, 305, wrap(graph.title, tokens.keyFindingSize, 360, 2), tokens.keyFindingSize, tokens.palette.accentStroke, 360, tokens));
+    const mindmap = graph.metadata?.mode === "summary";
+    // 思维导图：根节点放在左右两列之间的走廊垂直居中（与 positions() 的 summary 分支坐标对齐）
+    const root = mindmap
+      ? (() => {
+          const rows = Math.ceil(boxes.length / 2);
+          const step = CARD_H * tokens.cardScale + 80 * tokens.spacing;
+          const colHeight = rows * step - 80 * tokens.spacing;
+          return { x: CARD_W * tokens.cardScale + 170, y: 260 + Math.max(0, (colHeight - 130) / 2), width: 340, height: 130 };
+        })()
+      : { x: 60, y: 260, width: 420, height: 130 };
+    elements.unshift({ ...base("evidence-root", "ellipse", root, tokens), backgroundColor: tokens.palette.accentFill, strokeColor: tokens.palette.accentStroke }, text("evidence-root-text", root.x + 30, root.y + 35, wrap(graph.title, tokens.keyFindingSize, 360, 2), tokens.keyFindingSize, tokens.palette.accentStroke, 360, tokens));
     graph.nodes.slice(0, 12).forEach((node, i) => {
       const child = boxes[i];
-      elements.push(arrow(`evidence-root-edge-${i}`, { x: root.x + root.width, y: root.y + root.height / 2 }, { x: child.x, y: child.y + child.height / 2 }, "evidence-root", node.id, tokens));
+      const { start, end } = anchors(root, child);
+      elements.push(arrow(`evidence-root-edge-${i}`, start, end, "evidence-root", node.id, tokens));
     });
   }
   const seenEdges = new Map<string, number>();
