@@ -131,7 +131,7 @@
 - [x] T7 实施：扩展布局与参数化风格；提交 `b402233` + `db5b07f`，78 项 Harness 测试通过
 - [x] T8 实施：跨图类型 Agent Patch；提交 `22ea2a5`，89 项 Harness 测试通过
 - [x] T9 实施：智能编排 UI 和混合来源；提交 `a9009dd`，Harness 与组件测试通过
-- [ ] T10 实施：全链路验证、推送并部署生产（in_progress）
+- [x] T10 实施：全链路验证、推送并部署生产；`164a516` 已推送，生产部署 `dpl_9EqqhGqTSJfANxtr6nQ8LEQp1kK` READY
 - [ ] T11 实施：知乎 Hackathon OAuth 登录接入
   - 下载并核验用户指定的 Hackathon Skill；若压缩包无法自动提取，记录实际错误并改用安全的本地解压/官方文档路径
   - 使用 App ID 配置 OAuth；App Key 只通过本地 `.env`/Vercel Sensitive Environment Variable 注入，不写入代码、规划文件、日志或提交

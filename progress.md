@@ -30,6 +30,8 @@
 - Task 9 完成：`a9009dd` 将默认生成模式设为 auto，同时保留 viewpoint/roadmap；页面消费 Harness SSE 阶段并展示 `HarnessStatus`；来源面板显示混合来源类型；保留自选生成、热榜、清空确认、导出、素材库隐藏和无分页；91 项测试、tsc、lint、build、diff 检查通过。
 - 当前门：进入 Task 10，全链路验证、推送并部署生产。
 - Task 10 开始：本地 `main` 比 `origin/main` ahead 15，Vercel CLI 已登录；先执行完整自动化与本地浏览器全链路验收，再提交 planning 文件、推送和生产部署。
+- Task 10 完成：97 项测试通过；tsc、lint、build、diff check 通过；本地 `3003` 首页、`/api/auth/me`、`/api/search` 返回 200，首页无“加载更多回答”；planning/spec 已提交为 `164a516` 并推送，远程 main 与本地一致；Vercel 生产部署 `dpl_9EqqhGqTSJfANxtr6nQd8LEQp1kK` READY，线上首页与 `/api/auth/me` 均返回 200。
+- 当前门：Task 11 OAuth 真实凭据联调与 Skill 初始化仍待处理；OAuth 未完成前不宣称全项目完全收尾。
 
 ## Session 7 — 2026-09-12（Phase 9: 用户反馈修复轮 3）— complete
 - 补齐上一轮遗漏的规划记录：导出位置、搜索结果保留、继续加载、清空画布、Agent 样式修改均已实现
