@@ -84,6 +84,33 @@ test("emits the finite harness stages in order", async () => {
   assert.equal((events.at(-1)?.data as { graph: KnowledgeGraph }).graph.title, "Topic");
 });
 
+test("two-phase synthesis emits skeleton before detail before final graph", async () => {
+  const calls: string[] = [];
+  const skeletonGraph: KnowledgeGraph = {
+    ...graph,
+    title: "骨架标题",
+    nodes: graph.nodes.map((n) => ({ ...n, description: "" })),
+  };
+  const detailGraph: KnowledgeGraph = {
+    ...graph,
+    nodes: graph.nodes.map((n) => ({ ...n, description: "补充后的正文" })),
+  };
+  const events = await eventsFor(input(), dependencies({
+    fallbackPlan: () => plan({ budget: { ...plan().budget, modelCalls: 3 } }),
+    synthesize: undefined,
+    synthesizeSkeleton: async () => { calls.push("skeleton"); return skeletonGraph; },
+    synthesizeDetails: async () => { calls.push("details"); return detailGraph; },
+  }));
+  assert.deepEqual(calls, ["skeleton", "details"]);
+  const types = events.map((event) => event.type);
+  assert.ok(types.indexOf("graph-skeleton") < types.indexOf("graph-detail"), "skeleton event must precede detail event");
+  assert.ok(types.indexOf("graph-detail") < types.indexOf("graph"), "detail event must precede final graph");
+  const skeletonEvent = events.find((event) => event.type === "graph-skeleton")?.data as { graph: KnowledgeGraph };
+  assert.equal(skeletonEvent.graph.title, "骨架标题");
+  const finalEvent = events.at(-1)?.data as { graph: KnowledgeGraph };
+  assert.equal(finalEvent.graph.nodes[0].description, "补充后的正文");
+});
+
 test("preserves partial source errors when usable documents exist", async () => {
   const sourceResult: CollectResult = {
     documents: [document],

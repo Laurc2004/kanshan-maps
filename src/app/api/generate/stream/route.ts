@@ -98,6 +98,16 @@ export async function POST(req: NextRequest) {
               const data = event.data as { documents?: unknown[] };
               finalItems = data.documents ?? [];
               send("sources", { items: finalItems, errors: (data as { errors?: unknown[] }).errors ?? [] });
+            } else if (event.type === "graph-skeleton") {
+              // 骨架先到：前端立刻落卡片+标题（流式感）
+              const data = event.data as { graph: unknown; sources?: number; documents?: unknown[] };
+              finalGraph = data.graph;
+              send("graph-skeleton", { ...data, mode: "auto" });
+            } else if (event.type === "graph-detail") {
+              // 详情后补：正文逐字填充已落卡片
+              const data = event.data as { graph: unknown };
+              finalGraph = data.graph;
+              send("graph-detail", { ...data, mode: "auto" });
             } else if (event.type === "graph") {
               const data = event.data as { graph: unknown; sources?: number };
               finalGraph = data.graph;

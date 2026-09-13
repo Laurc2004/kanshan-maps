@@ -76,3 +76,47 @@ test("builds a data-only synthesis prompt and injects the model response", async
   assert.match(received, /facts/);
   assert.equal(graph.title, "Topic");
 });
+
+test("two-phase synthesis: skeleton leaves descriptions empty, detail phase fills them", async () => {
+  const { synthesizeSkeleton, synthesizeDetails } = await import("./synthesizer.ts");
+  const skeletonRaw = {
+    title: "骨架", summary: "",
+    nodes: [{ id: "n1", label: "要点一", citations: ["doc-1"] }],
+    edges: [], groups: [{ id: "g1", label: "组", nodeIds: ["n1"] }],
+  };
+  const detailRaw = { nodes: [{ id: "n1", description: "这是来自素材的具体论据。" }] };
+  const engine = { id: "custom" as const, baseURL: "https://model.test", apiKey: "secret" };
+  let phase = 0;
+  const complete = async () => JSON.stringify(phase++ === 0 ? skeletonRaw : detailRaw);
+  const skeleton = await synthesizeSkeleton(docs, plan, { engine, complete });
+  assert.equal(skeleton.title, "骨架");
+  assert.equal(skeleton.nodes[0].description, "");
+  assert.deepEqual(skeleton.nodes[0].citations, ["doc-1"]);
+  const detail = await synthesizeDetails(skeleton, docs, { engine, complete });
+  assert.equal(detail.nodes[0].description, "这是来自素材的具体论据。");
+});
+
+test("pruneFillerNodes drops citation-less filler nodes and clamps descriptions", async () => {
+  const { pruneFillerNodes } = await import("./synthesizer.ts");
+  const g = parseKnowledgeGraph(rawGraph({
+    nodes: [
+      { id: "real", label: "真观点", description: "有据", citations: ["doc-1"] },
+      { id: "filler", label: "其他", description: "凑数节点没有引用", citations: [] },
+      { id: "long", label: "长文", description: "很".repeat(120), citations: ["doc-1"] },
+    ],
+    edges: [{ fromId: "real", toId: "filler" }],
+  }), plan);
+  const pruned = pruneFillerNodes(validateCitations(g, docs));
+  assert.deepEqual(pruned.nodes.map((n) => n.id), ["real", "long"]);
+  assert.ok(pruned.nodes[1].description.length <= 60);
+  assert.deepEqual(pruned.edges, [], "edge to dropped node must be removed");
+});
+
+test("skeleton prompt enforces node count and mandatory citations", async () => {
+  const { buildSkeletonMessages } = await import("./synthesizer.ts");
+  const messages = buildSkeletonMessages("question", plan, docs);
+  const sys = messages[0].content;
+  assert.match(sys, /6-12 nodes/);
+  assert.match(sys, /at least one citation/i);
+  assert.match(sys, /no filler nodes/i);
+});

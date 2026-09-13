@@ -125,6 +125,17 @@
 - F8 路线图空白：scrollToContent 重试 8 次；F9 Excalidraw 紫→知乎蓝（theme=light + CSS 变量）
 - 验证：layouts 15/15、patch 10/10、全量测试、tsc/lint/build 全绿；真实 debate-grid/roadmap 生成通过；087ebb7 已部署生产
 
+## Session 13 — 2026-09-13（Phase 14: 智能编排提速 + 出图质量/链接修复）— 待提交
+- 用户反馈 2 项：①智能编排等待太久，要求流式出图 ②产出图无意义节点多、样式差、节点链接点不动
+- H1 提速（预算）：docs 12→8、charsPerDoc 8000→2600（planner MAX + sources BUDGET_MAX 同步）、OpenAI timeout 90s→60s
+- H2 提速（两阶段综合）：synthesizeSkeleton（只产骨架：title/groups/labels ≤20字 + 引用，新增 graph-skeleton SSE 事件）→ synthesizeDetails（填 ≤60 字正文，graph-detail 事件）；executor 先推骨架事件让前端立刻落卡片，正文后补；注入式 dependencies.synthesize 兼容旧测试
+- H3 质量：prompt 强制 6-12 节点 + 每节点 ≥1 真实引用 + 禁凑数节点；pruneFillerNodes 裁无引用节点并清其边/分组；layouts 展示上限 24→12
+- H4 链接：layouts 里 node.citations[0]（内部 id）→ citations 查表得真实 URL；卡片加"↗ 原文"提示行；page.tsx Excalidraw onPointerDown 命中 link 元素 window.open 新标签
+- 修复实施中两 bug：骨架顶层 citations 空导致节点引用被校验清空（改从节点 id 推导）；pruneFillerNodes 保底条件写反
+- 验证：104/104 测试（新增 4 项：两阶段事件顺序/骨架留空详情补齐/凑数裁剪/骨架 prompt 硬约束）、tsc、lint 0 错、build 全路由、本地 SSE 实测"考研还是就业"（骨架 8 节点先到 desc 0/8 → 详情 8/8；8 卡全带真实知乎 URL + ↗ 原文行、零超宽文本）
+- 坑：工具回显打码 apiKey:string → *** 是显示层行为，文件完好，勿当 bug 修
+- 待办：commit + push + Vercel 生产部署
+
 ## Session 12 — 2026-09-13（Phase 13: 路线图空白根修 + 布局紧凑化）— complete
 - E2E 复现路线图空白：legacy 模式 canvas 九宫格全 0%，无报错；根因是 roadmapToScene 展开 block() 返回值而非 .el（无 type 非法元素炸场景），导出走包围盒所以正常 —— 与用户症状完全吻合
 - 布局：radial-map 半径改弧长贴合（原 8 节点半径 1280px 巨圈）；concept-map→cluster-board 分簇；evidence-tree 显式右列；prompt 强制所有任务 2-4 分组、以问题为导向

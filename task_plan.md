@@ -160,6 +160,22 @@
 - [x] F9（用户新增6）Excalidraw 紫色→知乎蓝：theme="light" prop + CSS 变量覆盖（primary 系、选中态、checkbox、swatch）
 - [x] F10（用户新增7）紫色未生效根修：Excalidraw 自带 index.css 用同特异性 .excalidraw 且打包后在我们后面（后定义赢），globals.css 覆盖被打回；改 .excalidraw.excalidraw 加倍特异性压过；补全 --color-selection/--color-surface-high/--color-brand-*/--color-surface-primary-container 等整组紫色变量；删除工具栏「更多工具」入口（App-toolbar__extra-tools-trigger）。实测 CSS 变量全变蓝、紫色像素扫描 0 命中、更多工具按钮 display:none；lint 0 err、build 过
 
+### Phase 14: 智能编排提速 + 出图质量/链接修复 — status: in_progress
+背景：用户反馈智能编排（auto/Harness）两大问题：①等待太久，要求流式出图 ②产出图大量无意义节点、样式难看、节点链接点不动。
+根因（已定位）：
+- 慢：search 10s → synthesize 单次非流式模型调用（12 文档 × 8000 字 ≈ 96KB 提示，60-90s）→ 一次性出整图；budget 上限太肥；OpenAI 客户端 timeout 90s。
+- 无意义节点：synthesis prompt 只要求"2-4 分组"，没有节点数上限；图上限 24 节点。
+- 链接点不动：卡片 link 被塞成 citation id（如 "zhihu-search:123"）而非 URL；且缺 onPointerDown 链接点击处理。
+- 展示决策缺陷：rectangles 是原子元素，画板生成前一片空白直到最后。
+
+- [x] H1 预算瘦身（最能提速）：docs 12→8、charsPerDoc 8000→2600（同步 sources normalizeBudget BUDGET_MAX 和 planner MAX 常量）、模型 timeout 90s→60s；compare/roadmap 之外默认 sources=["zhihu-search"] 不拉 global-search
+- [x] H2 两阶段综合（流式感+防截断）：第一次模型调用只产骨架（title/summary/groups/每节点 label ≤20字 + citations），发 `graph-skeleton` SSE 事件；前端立刻落骨架卡片+标题；第二次调用填 description（≤60字）后发 `graph-detail` 事件更新画板文字。每阶段模型输出 token 从 ~4K 降到 ~1.5K，首屏可视时间减半
+- [x] H3 节点质量硬约束：prompt 强制 nodes 6-12 个、每节点必须 ≥1 条真实 citation、description ≤60 字、禁止"其他/补充/总结"凑数节点；validateGraph 增加节点 citation 覆盖率检查（不足则降级裁剪凑数节点）；layouts 展示上限 24→12
+- [x] H4 卡片链接修复：citation id → 真实 URL（citations 数组查表）；Excalidraw onPointerDown 命中 hit.element.link 时 window.open 新标签；卡片描述末行加"↗ 原文"提示（link 元素 Excalidraw 自带角标）
+- [x] H5 验证：harness 全量测试 104/104 + tsc + lint 0 错 + build 过 + 本地 SSE 实测（"考研还是就业"：骨架 8 节点 desc 0/8 → 详情补齐 8/8；节点描述全部是有数字/具体论断的真观点；渲染器算出 8 卡全部带真实 zhihu.com URL、8 行 ↗ 原文、零超宽文本）
+- 注意坑：工具回显会把 `apiKey: string` 打码成 `***`，看起来像文件损坏，实际 on-disk 完好，不要被误导去"修"
+- 实施中发现两个真 bug 已修：骨架阶段 parseSkeleton 传空顶层 citations 导致节点引用被 validateCitations 清空（改为从节点 citation id 推导）；pruneFillerNodes 保底逻辑写反（cited.length===nodes.length 时反而去裁）
+
 ### Phase 13: 路线图页面空白根修 + 智能编排布局紧凑化 — status: complete
 背景：F8 重试 scrollToContent 没治本，路线图页面仍空白（导出正常）；观点图正常。radial-map 半径公式 max(680, w*ceil(n/2)) 导致 8 节点半径 1280px 的巨圈，concept-map 又默认选 radial-map，多数问题都变围着圈。
 - [x] G1 E2E 复现：legacy「学习路线」模式九宫格全 0%（auto 正常 30%+），无 console 错误 → 逐层排查 scene 渲染器

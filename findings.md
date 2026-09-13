@@ -55,6 +55,13 @@
 - 故事/知识 列表+详情：`https://api.zhihu.com/km-indep-home/hackathon/v2/{story|knowledge}/{list|<work_id>}`
 - 知识接口可用于"学习路线图"场景的补充素材（P1）
 
+## 追加发现：Phase 14（智能编排提速与质量）
+- 流式出图不能靠 Excalidraw 元素级流式（每张卡是原子元素），体验上靠两阶段综合：骨架事件先落卡片+标题，详情事件后补正文。
+- 骨架阶段输出不带顶层 citations 数组，必须先按节点 citation id 推导 citations 再走 validateCitations，否则节点引用会被白名单清空。
+- 卡片 link 必须存真实 URL 而不是内部 citation id；Excalidraw link 元素的点击要用 onPointerDown 的 hit.element.link 自己 window.open（hit.element 是 PointerDownState 内置字段，0.18 类型里可用）。
+- Harness 预算收紧到 docs 8 / charsPerDoc 2600 / timeout 60s 后，实测 8 节点图的节点正文全部是有具体论断的真观点，凑数节点消失；charsPerDoc 太长只会让模型慢且产水货。
+- 工具回显把 `apiKey: string` 打码为 `***`（凭据保护误判），文件 on-disk 完好，不要当成损坏去修。
+
 ## 追加发现：Phase 10
 - Harness 契约必须严格以批准设计为准：intent 是 compare/roadmap/timeline/concept-map/argument-map/summary-board，source 是按优先级的数组，layout 仅使用 6 个确定性模板。
 - Task 2 首次实现虽然 17 项测试全绿，但测试编码了错误词汇，说明“测试通过”不能替代规格审查；进入 Adapter 前必须先修正类型契约。

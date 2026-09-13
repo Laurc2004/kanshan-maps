@@ -1,7 +1,7 @@
 import { fallbackPlan as defaultFallbackPlan, validatePlan as defaultValidatePlan } from "./planner.ts";
 import { collectSources as defaultCollectSources } from "./sources.ts";
 import type { CollectResult, CollectSourcesInput, Fetchers } from "./sources.ts";
-import { synthesizeKnowledgeGraph } from "./synthesizer.ts";
+import { pruneFillerNodes, synthesizeDetails, synthesizeSkeleton } from "./synthesizer.ts";
 import type {
   HarnessBudget,
   HarnessEvent,
@@ -34,6 +34,17 @@ export interface HarnessDependencies {
   synthesize?: (
     documents: SourceDocument[],
     plan: RunPlan,
+    options: { engine: HarnessInput["engine"] },
+  ) => Promise<KnowledgeGraph>;
+  // 两阶段综合（流式出图）：先骨架后详情。注入任一即可替换默认实现。
+  synthesizeSkeleton?: (
+    documents: SourceDocument[],
+    plan: RunPlan,
+    options: { engine: HarnessInput["engine"] },
+  ) => Promise<KnowledgeGraph>;
+  synthesizeDetails?: (
+    skeleton: KnowledgeGraph,
+    documents: SourceDocument[],
     options: { engine: HarnessInput["engine"] },
   ) => Promise<KnowledgeGraph>;
   supplementQuery?: (input: HarnessInput, plan: RunPlan, signal?: AbortSignal) => Promise<string | undefined>;
@@ -74,7 +85,6 @@ export async function* runHarness(
   const makePlan = dependencies.fallbackPlan ?? defaultFallbackPlan;
   const validatePlan = dependencies.validatePlan ?? defaultValidatePlan;
   const collectSources = dependencies.collectSources ?? defaultCollectSources;
-  const synthesize = dependencies.synthesize ?? synthesizeKnowledgeGraph;
   let stage = "planning";
 
   try {
@@ -135,8 +145,42 @@ export async function* runHarness(
       return;
     }
     modelCalls += 1;
-    yield { type: "synthesizing", data: { documents: sourceResult.documents.length, modelCall: modelCalls } };
-    const graph = await synthesize(sourceResult.documents, plan, { engine: input.engine });
+    yield { type: "synthesizing", data: { documents: sourceResult.documents.length, modelCall: modelCalls, phase: "skeleton" } };
+
+    let graph: KnowledgeGraph;
+    if (dependencies.synthesize) {
+      // 注入式（测试/特殊通道）：单次全量综合
+      graph = await dependencies.synthesize(sourceResult.documents, plan, { engine: input.engine });
+    } else {
+      // 两阶段综合：骨架先到（卡片立刻落画板），详情后补（正文逐字填充）
+      const skeleton = await (dependencies.synthesizeSkeleton ?? synthesizeSkeleton)(
+        sourceResult.documents, plan, { engine: input.engine },
+      );
+      const skeletonAbort = abortError(input.signal);
+      if (skeletonAbort) throw skeletonAbort;
+      graph = skeleton;
+      yield {
+        type: "graph-skeleton",
+        data: {
+          graph: skeleton,
+          mode: "auto",
+          sources: sourceResult.documents.length,
+          documents: sourceResult.documents,
+          sourceErrors: sourceResult.errors,
+        },
+      };
+      if (modelCalls < plan.budget.modelCalls) {
+        modelCalls += 1;
+        yield { type: "synthesizing", data: { documents: sourceResult.documents.length, modelCall: modelCalls, phase: "details" } };
+        graph = await (dependencies.synthesizeDetails ?? synthesizeDetails)(
+          skeleton, sourceResult.documents, { engine: input.engine },
+        );
+        const detailAbort = abortError(input.signal);
+        if (detailAbort) throw detailAbort;
+        yield { type: "graph-detail", data: { graph, mode: "auto" } };
+      }
+    }
+    graph = pruneFillerNodes(graph);
     const synthesisAbort = abortError(input.signal);
     if (synthesisAbort) throw synthesisAbort;
 

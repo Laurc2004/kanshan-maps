@@ -28,6 +28,7 @@ function wrap(value: string, size: number, maxWidth: number, maxLines: number): 
     if (line && widthOf(line + char, size) > maxWidth) { lines.push(line); line = char; } else line += char;
   }
   if (line) lines.push(line);
+  if (lines.length === 0) return "";
   const result = lines.slice(0, maxLines);
   if (lines.length > maxLines && result.length) result[result.length - 1] = `${result[result.length - 1].slice(0, -1)}…`;
   return result.join("\n");
@@ -47,14 +48,20 @@ function arrow(id: string, from: Point, to: Point, startNodeId: string, endNodeI
 function header(graph: KnowledgeGraph, tokens: ReturnType<typeof presentationTokens>): SceneElement[] {
   return [text("graph-title", 60, 30, wrap(graph.title, tokens.titleSize, 420, 2), tokens.titleSize, tokens.palette.title, 420, tokens), ...(graph.summary ? [text("graph-summary", 60, 30 + tokens.titleSize * 2.5, wrap(graph.summary, tokens.evidenceSize, 420, 3), tokens.evidenceSize, tokens.palette.muted, 420, tokens)] : [])];
 }
-function card(node: KnowledgeNode, box: Box, index: number, tokens: ReturnType<typeof presentationTokens>, fillIndex = index): SceneElement[] {
+function card(node: KnowledgeNode, box: Box, index: number, tokens: ReturnType<typeof presentationTokens>, fillIndex = index, link?: string | null): SceneElement[] {
   const id = `node-${safeId(node.id)}`;
   const fill = tokens.palette.fills[fillIndex % tokens.palette.fills.length];
   const stroke = tokens.palette.strokes[fillIndex % tokens.palette.strokes.length];
   const innerWidth = box.width - 40;
   const title = wrap(node.label, tokens.keyFindingSize, innerWidth, 2);
   const body = wrap(node.description, tokens.evidenceSize, innerWidth, 4);
-  return [{ ...base(id, "rectangle", box, tokens), backgroundColor: fill, strokeColor: stroke, strokeWidth: node.emphasis === "high" ? tokens.strokeWidth + 1 : tokens.strokeWidth, link: node.citations[0] ?? null, customData: { nodeId: node.id } }, text(`${id}-title`, box.x + 20, box.y + 20, title, tokens.keyFindingSize, stroke, innerWidth, tokens), text(`${id}-body`, box.x + 20, box.y + 76, body, tokens.evidenceSize, tokens.palette.body, innerWidth, tokens)];
+  const elements = [{ ...base(id, "rectangle", box, tokens), backgroundColor: fill, strokeColor: stroke, strokeWidth: node.emphasis === "high" ? tokens.strokeWidth + 1 : tokens.strokeWidth, link: link ?? null, customData: { nodeId: node.id } }, text(`${id}-title`, box.x + 20, box.y + 20, title, tokens.keyFindingSize, stroke, innerWidth, tokens)];
+  if (body) elements.push(text(`${id}-body`, box.x + 20, box.y + 76, body, tokens.evidenceSize, tokens.palette.body, innerWidth, tokens));
+  // 有原文链接时给"↗ 原文"提示行（Excalidraw link 元素自带角标，点击由前端 onPointerDown 打开）
+  if (link) {
+    elements.push(text(`${id}-link`, box.x + 20, box.y + box.height - 34, "↗ 原文", tokens.evidenceSize - 2, stroke, innerWidth, tokens));
+  }
+  return elements;
 }
 function groupSlot(graph: KnowledgeGraph, nodeId: string, index: number): { group: number; slot: number } {
   const group = graph.groups.findIndex((candidate) => candidate.nodeIds.includes(nodeId));
@@ -62,7 +69,8 @@ function groupSlot(graph: KnowledgeGraph, nodeId: string, index: number): { grou
   return { group: graph.groups.length, slot: index };
 }
 function positions(graph: KnowledgeGraph, layout: LayoutKind, tokens: ReturnType<typeof presentationTokens>): Box[] {
-  const nodes = graph.nodes.slice(0, 24);
+  // 展示上限与综合目标对齐（6-12 节点可读且不凑数）；超过的节点由 pruneFillerNodes 先行裁剪
+  const nodes = graph.nodes.slice(0, 12);
   const scale = tokens.cardScale;
   const width = CARD_W * scale, height = CARD_H * scale, gap = 80 * tokens.spacing;
   if (layout === "debate-grid") {
@@ -130,11 +138,20 @@ function render(graph: KnowledgeGraph, layout: LayoutKind): SceneElement[] {
   const tokens = presentationTokens(spec);
   const elements = header(graph, tokens);
   const boxes = positions(graph, layout, tokens);
-  boxes.forEach((box, i) => elements.push(...card(graph.nodes[i], box, i, tokens, i + (layout === "cluster-board" ? 1 : 0))));
+  // 卡片链接：节点 citation id → 真实 URL（没有引用的节点不带链接）
+  const urlByCitationId = new Map(graph.citations.map((citation) => [citation.id, citation.url]));
+  const nodeLink = (node: KnowledgeNode): string | null => {
+    for (const id of node.citations) {
+      const url = urlByCitationId.get(id);
+      if (url) return url;
+    }
+    return null;
+  };
+  boxes.forEach((box, i) => elements.push(...card(graph.nodes[i], box, i, tokens, i + (layout === "cluster-board" ? 1 : 0), nodeLink(graph.nodes[i]))));
   if (layout === "evidence-tree") {
     const root = { x: 60, y: 260, width: 420, height: 130 };
     elements.unshift({ ...base("evidence-root", "ellipse", root, tokens), backgroundColor: tokens.palette.accentFill, strokeColor: tokens.palette.accentStroke }, text("evidence-root-text", 90, 305, wrap(graph.title, tokens.keyFindingSize, 360, 2), tokens.keyFindingSize, tokens.palette.accentStroke, 360, tokens));
-    graph.nodes.slice(0, 24).forEach((node, i) => {
+    graph.nodes.slice(0, 12).forEach((node, i) => {
       const child = boxes[i];
       elements.push(arrow(`evidence-root-edge-${i}`, { x: root.x + root.width, y: root.y + root.height / 2 }, { x: child.x, y: child.y + child.height / 2 }, "evidence-root", node.id, tokens));
     });

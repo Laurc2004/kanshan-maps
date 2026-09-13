@@ -20,11 +20,11 @@ const ALLOWED_STYLES: PaletteId[] = [
 ];
 
 const MAX_QUERIES = 3;
-const MAX_DOCS = 12;
-const MAX_CHARS_PER_DOC = 8000;
-const MAX_QUERY_COUNT = 6;
+const MAX_DOCS = 8;
+const MAX_CHARS_PER_DOC = 2600;
+const MAX_QUERY_COUNT = 3;
 const MAX_MODEL_CALLS = 3;
-const MAX_MILLIS = 120_000;
+const MAX_MILLIS = 60_000;
 
 function clamp<T>(value: T | undefined, allowed: readonly T[], fallback: T): T {
   if (value !== undefined && allowed.includes(value)) return value;

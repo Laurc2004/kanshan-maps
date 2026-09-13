@@ -81,6 +81,8 @@ export type HarnessEventType =
   | "synthesizing"
   | "laying_out"
   | "validating"
+  | "graph-skeleton"
+  | "graph-detail"
   | "graph"
   | "error";
 

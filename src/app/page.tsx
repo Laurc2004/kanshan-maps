@@ -263,7 +263,7 @@ export default function Home() {
       setHarnessProgress(mode === "auto" ? { stage: "planning", steps: [] } : null);
       setSourceDocuments([]);
       try {
-        // SSE 流式：素材先到（SourcesPanel 立刻有内容），图后到（画板落笔）
+        // SSE 流式：素材先到（SourcesPanel 立刻有内容），骨架卡片先到（画板立刻落笔），正文详情后补
         // picked：用户自选回答直传，跳过服务端搜索
         const res = await fetch("/api/generate/stream", {
           method: "POST",
@@ -345,6 +345,28 @@ export default function Home() {
               return { stage: "sources", steps: [...(prev?.steps ?? []), step] };
             });
             setShowSources(true);
+          } else if (event === "graph-skeleton") {
+            // 骨架先到：卡片+标题立刻落画板（流式出图第一阶段）
+            setGraph(data.graph);
+            graphRef.current = data.graph;
+            setGraphMode("viewpoint");
+            setHarnessEvent("synthesizing");
+            setHarnessProgress((prev: HarnessProgress | null) => {
+              const g = data.graph as { title?: string; nodes?: unknown[] } | undefined;
+              const step: HarnessStep = { label: "骨架落板", output: g?.title ? `「${String(g.title).slice(0, 20)}」· ${g?.nodes?.length ?? "?"} 张卡片` : "卡片已落画板" };
+              return { stage: "synthesizing", steps: [...(prev?.steps ?? []), step] };
+            });
+            setBoardMounted(true);
+            await renderGraph(data.graph, undefined, "viewpoint");
+          } else if (event === "graph-detail") {
+            // 详情后补：正文填充进已落卡片
+            setGraph(data.graph);
+            graphRef.current = data.graph;
+            setHarnessProgress((prev: HarnessProgress | null) => {
+              const step: HarnessStep = { label: "补全论据", output: "卡片正文已填充" };
+              return { stage: "laying_out", steps: [...(prev?.steps ?? []), step] };
+            });
+            await renderGraph(data.graph, undefined, "viewpoint");
           } else if (event === "graph") {
             // 第二步：图落画板
             setGraph(data.graph);
@@ -769,6 +791,12 @@ export default function Home() {
                 viewModeEnabled={false}
                 langCode="zh-CN"
                 theme="light"
+                onPointerDown={(_tool, pointerDownState) => {
+                  // 卡片链接点击：hit 元素带 link 时新标签打开原文
+                  const hit = pointerDownState.hit.element;
+                  const link = hit?.link;
+                  if (link && /^https?:\/\//.test(link)) window.open(link, "_blank", "noopener,noreferrer");
+                }}
                 UIOptions={{
                   canvasActions: {
                     loadScene: false,

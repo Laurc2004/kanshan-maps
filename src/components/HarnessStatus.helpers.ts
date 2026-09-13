@@ -8,6 +8,8 @@ const STAGE_LABELS: Record<HarnessEventType, string> = {
   laying_out: "布局",
   validating: "验证",
   graph: "完成",
+  "graph-skeleton": "骨架落板",
+  "graph-detail": "补全论据",
   error: "出错",
 };
 

@@ -71,7 +71,7 @@ function withTimeout<T>(
   });
 }
 
-const BUDGET_MAX: HarnessBudget = { queryCount: 6, docs: 12, charsPerDoc: 8000, modelCalls: 3, millis: 120_000 };
+const BUDGET_MAX: HarnessBudget = { queryCount: 3, docs: 8, charsPerDoc: 2600, modelCalls: 3, millis: 60_000 };
 function normalizeBudget(input: Partial<HarnessBudget>): HarnessBudget {
   const value = (key: keyof HarnessBudget): number => {
     const raw = input[key];

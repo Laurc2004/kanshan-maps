@@ -4,9 +4,9 @@ import { fallbackPlan, validatePlan } from "./planner.ts";
 import type { PlanInput, RunPlan, LayoutKind, SourceId } from "./types.ts";
 
 const MAX_QUERIES = 3;
-const MAX_DOCS = 12;
+const MAX_DOCS = 8;
 const MAX_MODEL_CALLS = 3;
-const MAX_CHARS_PER_DOC = 8000;
+const MAX_CHARS_PER_DOC = 2600;
 
 void describe("fallbackPlan rule-based degradation", () => {
   void it("degrades learning class input to roadmap intent / swimlane-roadmap layout", () => {
@@ -160,7 +160,7 @@ void describe("validatePlan contract", () => {
     assert.equal(result.ok, false);
   });
 
-  it("rejects a candidate that exceeds budget caps", () => {
+  void it("rejects a candidate that exceeds budget caps", () => {
     const input: PlanInput = { query: "量子计算" };
     const bad: RunPlan = {
       ...fallbackPlan(input),
@@ -169,7 +169,6 @@ void describe("validatePlan contract", () => {
     const result = validatePlan(bad, input);
     assert.equal(result.ok, false);
   });
-
   it("rejects a candidate whose layout is not allowed", () => {
     const input: PlanInput = { query: "x" };
     const bad: RunPlan = { ...fallbackPlan(input), layout: "banana" as LayoutKind };
