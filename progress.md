@@ -273,3 +273,9 @@
 - layouts.ts header：标题/描述居中（textAlign center、文本框中心对齐 x=590）、28px/1100 宽/3 行完整显示不截断
 - 验证：全量 166/166（layouts 21 + compat roundtrip 适配新分组）/ tsc 0 / lint 0 error / E2E 真实生成 2 组对立、箭头零压卡、页眉居中完整全 PASS
 - 待办：用户验收 → 提交推送 + 生产部署
+
+## Session 24 — 2026-09-14（Phase 26: 观点对照去箭头 + 卡片文字全显示）— 待部署
+- 用户反馈：观点对照干脆去掉箭头；卡片内文字要完全展示清楚，可拓长拓宽卡片
+- layouts.ts：移除 debate-link 汇聚箭头（含 curveArrow3 helper），只保留胶囊→共识横幅绿色连线；归属表达靠列头立场标签+按列分色
+- layouts.ts：card/cardHeight 加 fullText 参数——debate 卡片标题/正文取消行数上限、卡高按完整内容撑开；positions debate 分支卡片加宽 320→400（两列+140 间隙=940）
+- 验证：全量 166/166、tsc 0、lint 0 error、build 过；E2E 真实生成断言全 PASS（无箭头/卡宽 400/卡文字零截断/2 组对立/共识通栏/页眉居中）

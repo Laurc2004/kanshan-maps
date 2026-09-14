@@ -5,11 +5,12 @@ export type SceneElement = Record<string, unknown>;
 type Point = { x: number; y: number };
 type Box = Point & { width: number; height: number };
 const CARD_W = 320;
+const CARD_W_DEBATE = 400; // P26：观点对照卡片加宽（左右两列 400+400+140 列间隙 = 940，画布仍紧凑），配合全文字显示
 const CARD_H = 132; // 卡片最小高度（P24：内容主导，280 的旧最小值让稀疏卡片大面积留白）；实际高度按内容行数动态计算
 const LINE_HEIGHT = 1.25;
 const CARD_PAD = 18; // 卡片内边距（上下左右一致）
-const TITLE_MAX_LINES = 2; // P24：标题最多 2 行，排版更紧凑
-const BODY_MAX_LINES = 6; // S5：描述最多 6 行
+const TITLE_MAX_LINES = 2; // P24：标题最多 2 行，排版更紧凑（debate 卡片除外——P26 起标题全显示）
+const BODY_MAX_LINES = 6; // S5：描述最多 6 行（debate 卡片除外——P26 起正文全显示）
 const TITLE_BODY_GAP = 10; // P24：标题与正文之间的垂直间距收紧（16 太松）
 
 function hash(value: string): number {
@@ -82,18 +83,6 @@ function curveArrow(id: string, from: Point, to: Point, startNodeId: string, end
     lastCommittedPoint: null, startBinding: null, endBinding: null, startArrowhead: null, endArrowhead: "arrow", startNodeId, endNodeId,
   };
 }
-
-// 显式控制点的 3 点贝塞尔箭头（P25：汇聚箭头沿列外侧走线，控制点由调用方算好）
-function curveArrow3(id: string, from: Point, ctrl: Point, to: Point, startNodeId: string, endNodeId: string, tokens: ReturnType<typeof presentationTokens>, color?: string): SceneElement {
-  const x = Math.min(from.x, ctrl.x, to.x), y = Math.min(from.y, ctrl.y, to.y);
-  return {
-    ...base(id, "arrow", { x, y, width: Math.max(1, Math.max(from.x, ctrl.x, to.x) - x), height: Math.max(1, Math.max(from.y, ctrl.y, to.y) - y) }, tokens),
-    points: [[from.x - x, from.y - y], [ctrl.x - x, ctrl.y - y], [to.x - x, to.y - y]],
-    roundness: { type: 2 },
-    ...(color ? { strokeColor: color } : {}),
-    lastCommittedPoint: null, startBinding: null, endBinding: null, startArrowhead: null, endArrowhead: "arrow", startNodeId, endNodeId,
-  };
-}
 function header(graph: KnowledgeGraph, tokens: ReturnType<typeof presentationTokens>): SceneElement[] {
   // P25：标题/描述居中（textAlign center、文本框中心对齐整图中心 x=590），完整显示不截断；
   // 标题 28px（原 32 更容易折行）、宽 1100、最多 3 行——「文字一多就被截断」的修法是样式自适应
@@ -114,15 +103,16 @@ function header(graph: KnowledgeGraph, tokens: ReturnType<typeof presentationTok
   return [titleEl, ...summaryEl];
 }
 // S5/S6：卡高按实际行数动态计算（上内边距 + 标题行高 + 标题正文间距 + 正文行高 + 下内边距），CARD_H 仅作最小值
-function cardHeight(node: KnowledgeNode, width: number, tokens: ReturnType<typeof presentationTokens>): number {
+// P26：fullText=true 时标题/正文不截断（行数无上限），高度按完整内容撑开——debate 卡片专用
+function cardHeight(node: KnowledgeNode, width: number, tokens: ReturnType<typeof presentationTokens>, fullText = false): number {
   const innerWidth = width - CARD_PAD * 2;
-  const titleLines = Math.min(TITLE_MAX_LINES, wrapLines(node.label, tokens.keyFindingSize, innerWidth).length) || 1;
-  const bodyLines = node.description ? Math.min(BODY_MAX_LINES, wrapLines(node.description, tokens.evidenceSize, innerWidth).length) : 0;
+  const titleLines = (fullText ? wrapLines(node.label, tokens.keyFindingSize, innerWidth).length : Math.min(TITLE_MAX_LINES, wrapLines(node.label, tokens.keyFindingSize, innerWidth).length)) || 1;
+  const bodyLines = node.description ? (fullText ? wrapLines(node.description, tokens.evidenceSize, innerWidth).length : Math.min(BODY_MAX_LINES, wrapLines(node.description, tokens.evidenceSize, innerWidth).length)) : 0;
   const content = CARD_PAD + titleLines * tokens.keyFindingSize * LINE_HEIGHT
     + (bodyLines ? TITLE_BODY_GAP + bodyLines * tokens.evidenceSize * LINE_HEIGHT + CARD_PAD : CARD_PAD);
   return Math.max(CARD_H * tokens.cardScale, Math.ceil(content));
 }
-function card(node: KnowledgeNode, box: Box, index: number, tokens: ReturnType<typeof presentationTokens>, fillIndex = index, link?: string | null): SceneElement[] {
+function card(node: KnowledgeNode, box: Box, index: number, tokens: ReturnType<typeof presentationTokens>, fillIndex = index, link?: string | null, fullText = false): SceneElement[] {
   const id = `node-${safeId(node.id)}`;
   // fillIndex < 0：白底卡（泳道内节点，描边用泳道色 = -fillIndex-1）
   const whiteFill = fillIndex < 0;
@@ -130,8 +120,8 @@ function card(node: KnowledgeNode, box: Box, index: number, tokens: ReturnType<t
   const fill = whiteFill ? "#ffffff" : tokens.palette.fills[colorIdx];
   const stroke = tokens.palette.strokes[colorIdx % tokens.palette.strokes.length];
   const innerWidth = box.width - CARD_PAD * 2;
-  const title = wrap(node.label, tokens.keyFindingSize, innerWidth, TITLE_MAX_LINES);
-  const body = wrap(node.description, tokens.evidenceSize, innerWidth, BODY_MAX_LINES);
+  const title = fullText ? wrapLines(node.label, tokens.keyFindingSize, innerWidth).join("\n") : wrap(node.label, tokens.keyFindingSize, innerWidth, TITLE_MAX_LINES);
+  const body = fullText ? wrapLines(node.description, tokens.evidenceSize, innerWidth).join("\n") : wrap(node.description, tokens.evidenceSize, innerWidth, BODY_MAX_LINES);
   const titleLineCount = title ? title.split("\n").length : 0;
   // 正文起点紧跟标题实际行数（与 cardHeight 的累计口径一致，确保文字不超卡底）
   const bodyY = box.y + CARD_PAD + Math.max(1, titleLineCount) * tokens.keyFindingSize * LINE_HEIGHT + TITLE_BODY_GAP;
@@ -162,6 +152,9 @@ function positions(graph: KnowledgeGraph, layout: LayoutKind, tokens: ReturnType
     // 观点对照版式（P25）：中心问题胶囊 + 观点卡按组左右对立分列（组0=左列、组1=右列、其余组依次向下扩展列）
     // + 共识节点占位（由 render 合并成底部通栏长卡）。只有 id=question 的中心问题节点画成胶囊；
     // emphasis=high 是普通卡加粗描边（标重点不消失）
+    // P26：观点卡加宽到 400 且文字全显示（标题/正文不截断），卡高按完整内容撑开
+    const debateWidth = CARD_W_DEBATE * scale;
+    const debateHeightOf = (node: KnowledgeNode) => cardHeight(node, debateWidth, tokens, true);
     const boxes: Box[] = [];
     const groupOf = (nodeId: string) => graph.groups.findIndex((grp) => grp.nodeIds.includes(nodeId));
     // 问题节点判定：compat 转换的图固定 id="question"；LLM 直接产的图（无固定 id）取第一个 emphasis=high 的节点
@@ -170,7 +163,7 @@ function positions(graph: KnowledgeGraph, layout: LayoutKind, tokens: ReturnType
       const hi = nodes.findIndex((n) => n.emphasis === "high");
       if (hi >= 0) capsuleId = nodes[hi].id;
     }
-    const colW = width + 150 * tokens.spacing;
+    const colW = debateWidth + 140 * tokens.spacing;
     const X0 = 70, TOP = 260;
     const lanes = new Map<number, number[]>();
     nodes.forEach((node, i) => {
@@ -183,8 +176,8 @@ function positions(graph: KnowledgeGraph, layout: LayoutKind, tokens: ReturnType
       lanes.get(lane)!.push(i);
     });
     for (const [lane, members] of [...lanes.entries()].sort((a, b) => a[0] - b[0])) {
-      const ys = stackY(members.map((i) => ({ index: i, height: heightOf(nodes[i]) })), TOP, gap);
-      members.forEach((idx) => { boxes[idx] = { x: X0 + lane * colW, y: ys.get(idx)!, width, height: heightOf(nodes[idx]) }; });
+      const ys = stackY(members.map((i) => ({ index: i, height: debateHeightOf(nodes[i]) })), TOP, gap);
+      members.forEach((idx) => { boxes[idx] = { x: X0 + lane * colW, y: ys.get(idx)!, width: debateWidth, height: debateHeightOf(nodes[idx]) }; });
     }
     return boxes;
   }
@@ -325,7 +318,8 @@ function render(graph: KnowledgeGraph, layout: LayoutKind): SceneElement[] {
     if (isCapsuleNode(graph.nodes[i]) || isConsensusNode(graph.nodes[i])) return; // 胶囊/共识在专用分支渲染
     // swimlane：节点卡用白色底 + 泳道色描边，浮在彩色泳道框上（旧学习路线版式）
     const fillIdx = layout === "swimlane-roadmap" ? -(groupSlot(graph, graph.nodes[i].id, i).group + 1) : i + (layout === "cluster-board" ? 1 : 0);
-    elements.push(...card(graph.nodes[i], box, i, tokens, fillIdx, nodeLink(graph.nodes[i])));
+    // P26：debate 卡片文字全显示（标题/正文不截断，卡高已在 positions 按完整内容撑开）
+    elements.push(...card(graph.nodes[i], box, i, tokens, fillIdx, nodeLink(graph.nodes[i]), layout === "debate-grid"));
   });
   if (layout === "debate-grid") {
     // 观点对照版式（P25）：立场列头标签 + 中心问题胶囊 + 观点卡→胶囊按列换色曲线箭头 + 共识通栏长卡
@@ -367,32 +361,9 @@ function render(graph: KnowledgeGraph, layout: LayoutKind): SceneElement[] {
         textAlign: "center", verticalAlign: "middle",
       }] : []),
     );
-    // P25：观点卡 → 胶囊的汇聚箭头「沿列内侧边缘上升到顶再汇入」：
-    // 起点取卡内侧边缘中点（左列取卡右缘、右列取卡左缘），控制点紧贴起点正上方（x 不变），
-    // 弧线贴列内侧边缘（列间隙走廊）垂直上升，到顶后水平弯入胶囊同侧 1/4 处。
-    // 列间隙 150px 是天然走廊：左列卡右缘 x=390，弧线 x 全程在 [390, 460] 内，不与任何卡相交。
+    // P26：观点卡 → 胶囊不再画箭头——列头立场标签 + 卡片按列分色已充分表达「卡属于哪一方」，
+    // 箭头（即使走廊走线零压卡）在视觉上仍是噪音。只保留胶囊 → 共识横幅的绿色连线。
     const linkTargetId = capsuleNodeId ?? "question";
-    const capsuleCy = capsule.y + capsule.height;
-    boxes.forEach((box, i) => {
-      if (isCapsuleNode(shownNodes[i]) || isConsensusNode(shownNodes[i])) return;
-      // 单侧列（所有卡都在胶囊同侧，如只有 1 组）时统一走卡右缘内侧走廊：
-      // 否则 leftSide=false 会让箭头从卡左缘出发斜穿同列卡片（E2E 实测 link-2 14 个采样点入卡 1）
-      const cardCx = box.x + box.width / 2;
-      const capsuleCx = capsule.x + capsule.width / 2;
-      const leftSide = grid.length && Math.max(...grid.map((b) => b.x)) === Math.min(...grid.map((b) => b.x))
-        ? true // 单列：统一按左列处理，走右缘内侧走廊
-        : cardCx < capsuleCx;
-      const start: Point = { x: leftSide ? box.x + box.width + 8 : box.x - 8, y: box.y + box.height / 2 };
-      // 单列时胶囊可能与卡横向重叠（胶囊 x=174 在卡 [70,390] 内），终点取胶囊右缘外侧
-      // 保证弧线 x 全程 ≥ 卡右缘+8，终点段不再向左下斜穿顶卡
-      const single = grid.length && Math.max(...grid.map((b) => b.x)) === Math.min(...grid.map((b) => b.x));
-      const end: Point = single
-        ? { x: Math.max(capsule.x + capsule.width, Math.max(...grid.map((b) => b.x + b.width)) + 40), y: capsuleCy + 4 }
-        : { x: capsule.x + (leftSide ? capsule.width * 0.25 : capsule.width * 0.75), y: capsuleCy + 4 };
-      const ctrl: Point = { x: start.x, y: end.y };
-      const laneIdx = Math.max(0, groupOf(shownNodes[i].id));
-      elements.push(curveArrow3(`debate-link-${i}`, start, ctrl, end, shownNodes[i].id, linkTargetId, tokens, laneColor(laneIdx)));
-    });
     // P25：共识通栏长卡（多条共识合并成一张，编号横排），胶囊 → 共识一条绿色曲线箭头
     const consensusNodes = shownNodes.filter((n) => isConsensusNode(n));
     if (consensusNodes.length) {

@@ -234,26 +234,30 @@ test("debate-grid renders viewpoint cards in group lanes with central question c
   // 中心胶囊存在，且 y 在观点卡上方
   const capsule = scene.find((e) => e.id === "debate-capsule") as { x: number; y: number; width: number; height: number };
   assert.ok(capsule, "central question capsule must exist");
-  const cards = scene.filter((e) => e.type === "rectangle" && String(e.id).startsWith("node-")) as Array<{ id: string; x: number; y: number }>;
+  const cards = scene.filter((e) => e.type === "rectangle" && String(e.id).startsWith("node-")) as Array<{ id: string; x: number; y: number; width: number }>;
   assert.equal(cards.length, 4, "4 viewpoint cards (consensus node renders as banner, not card)");
   assert.ok(cards.every((c) => c.y > capsule.y), "all cards below capsule");
   // 观点卡按组对立分列：g1 一列、g2 一列
   assert.equal(new Set(cards.map((c) => c.x)).size, 2, "viewpoint cards in 2 group lanes");
-  // 每张卡都有指向胶囊的汇聚箭头
+  // P26：观点卡 → 胶囊不再画汇聚箭头（列头标签 + 分色已表达归属，箭头是视觉噪音）；
+  // 唯一保留的箭头是胶囊 → 共识横幅的绿色连线
   const links = scene.filter((e) => e.type === "arrow" && String(e.id).startsWith("debate-link-"));
-  assert.equal(links.length, 4, "every viewpoint card links to capsule");
+  assert.equal(links.length, 0, "no viewpoint→capsule arrows (removed in P26)");
   // 胶囊节点本身不渲染成普通卡
   assert.ok(!cards.some((c) => c.id.includes("question")), "question node must render as capsule, not card");
   // P25：共识合并成一张通栏长卡（不是多张小卡），且带一条胶囊→共识连线
   const banner = scene.find((e) => e.id === "debate-consensus") as { x: number; y: number; width: number; height: number };
   assert.ok(banner, "consensus must render as a single banner card");
-  const gridW = Math.max(...cards.map((c) => c.x)) + 320 - Math.min(...cards.map((c) => c.x));
+  const gridW = Math.max(...cards.map((c) => c.x)) + 400 - Math.min(...cards.map((c) => c.x));
   assert.ok(banner.width >= gridW - 1, `banner should span the full grid width (got ${banner.width}, grid ${gridW})`);
   assert.ok(scene.some((e) => e.id === "debate-consensus-link"), "capsule → consensus link must exist");
-  // P25：汇聚箭头按列换色（不再单一黑色），且立场列头标签存在
-  const colors = new Set(links.map((e) => e.strokeColor));
-  assert.ok(colors.size >= 2, "arrows should be colored per lane, not single black");
+  // 立场列头标签存在（P26 起这是表达归属的主要方式）
   assert.ok(scene.some((e) => e.id === "debate-stance-0") && scene.some((e) => e.id === "debate-stance-1"), "lane stance labels must exist");
+  // P26：观点卡加宽到 400 且文字全显示——卡标题/正文元素无省略号截断
+  const cardTexts = scene.filter((e) => e.type === "text" && /node-.*-(title|body)$/.test(String(e.id))) as Array<{ text: string }>;
+  assert.ok(cardTexts.length >= 4, "card title/body texts exist");
+  assert.ok(cardTexts.every((t) => !/…/.test(t.text)), "debate card texts must never be truncated");
+  assert.ok(cards.every((c) => Math.abs(c.width - 400) < 1), "debate cards widened to 400");
 });
 
 // P25：顶部标题/描述必须居中且完整显示（长标题不截断）
