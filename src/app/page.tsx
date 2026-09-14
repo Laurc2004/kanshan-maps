@@ -14,13 +14,13 @@ import SourcesPanel, { type HotItem } from "@/components/SourcesPanel";
 import { requestClearBoard } from "@/lib/board-actions";
 import HarnessStatus from "@/components/HarnessStatus";
 import SourceIndex from "@/components/SourceIndex";
-import { BoardPresentationControls, BoardShareButtons } from "@/components/BoardControls";
+import { BoardControls } from "@/components/BoardControls";
 import ProfileCenter from "@/components/ProfileCenter";
 import { collectKnowledgeSources } from "@/lib/knowledge-assets";
-import { applyPresentation } from "@/lib/presentation-controls";
+import { applyPalette } from "@/lib/presentation-controls";
 import { deleteBoard, listSavedBoards, saveBoard, type SavedBoard } from "@/lib/local-library";
 import { addWatermark } from "@/lib/share";
-import type { LayoutKind, PaletteId } from "@/lib/harness/types";
+import type { PaletteId } from "@/lib/harness/types";
 
 const Excalidraw = dynamic(() => import("@excalidraw/excalidraw").then((m) => m.Excalidraw), {
   ssr: false,
@@ -554,10 +554,10 @@ export default function Home() {
     const restoredMode: Mode = board.mode === "roadmap" ? "roadmap" : "presentation" in restoredGraph && restoredGraph.kind === "cluster-board" ? "summary" : "compare";
     setGraph(restoredGraph); graphRef.current = restoredGraph; setGraphMode(restoredMode); setMode(restoredMode); setQuestion(board.title); setBoardMounted(true); setShowProfile(false); renderGraph(restoredGraph, undefined, restoredMode); persistBoard(restoredGraph, restoredMode, board.title);
   }, [persistBoard, renderGraph]);
-  const changePresentation = useCallback((layout: LayoutKind, palette: PaletteId) => {
+  const changePalette = useCallback((palette: PaletteId) => {
     if (!graph) return;
-    try { const next = applyPresentation(graph, layout, palette); const nextMode: Mode = layout === "swimlane-roadmap" || layout === "timeline" ? "roadmap" : graphMode; setGraph(next); graphRef.current = next; setGraphMode(nextMode); renderGraph(next, undefined, nextMode); persistBoard(next, nextMode, next.title, items); }
-    catch (cause) { setError(cause instanceof Error ? cause.message : "版式切换失败"); }
+    try { const next = applyPalette(graph, palette); setGraph(next); graphRef.current = next; renderGraph(next, undefined, graphMode); persistBoard(next, graphMode, next.title, items); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : "配色切换失败"); }
   }, [graph, graphMode, items, persistBoard, renderGraph]);
 
   // 热榜点击：弹窗确认后生成
@@ -940,12 +940,9 @@ export default function Home() {
                 viewModeEnabled={false}
                 langCode="zh-CN"
                 theme="light"
-                renderTopRightUI={() => (
-                  <div className="ks-board-ui flex items-center gap-1.5 rounded-[10px] border border-[#ecece8] bg-white p-1 shadow-[0_2px_10px_rgb(0_0_0/0.05)]" data-testid="board-topright-ui">
-                    {graph && <BoardPresentationControls graph={graph} busy={loading} onChange={changePresentation} />}
-                    {graph && <BoardShareButtons graph={graph} makePng={makePng} />}
-                  </div>
-                )}
+                renderTopRightUI={() =>
+                  graph ? <BoardControls graph={graph} busy={loading} makePng={makePng} onPaletteChange={changePalette} /> : null
+                }
                 onPointerDown={(_tool, pointerDownState) => {
                   // 卡片链接点击：hit 元素带 link 时新标签打开原文
                   const hit = pointerDownState.hit.element;

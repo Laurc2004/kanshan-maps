@@ -1,4 +1,4 @@
-import type { KnowledgeGraph, LayoutKind, PaletteId } from "./harness/types.ts";
+import type { KnowledgeGraph, PaletteId } from "./harness/types.ts";
 import type { GraphLike } from "./knowledge-assets.ts";
 import { normalizeAgentGraph } from "./graph-contract.ts";
 
@@ -10,15 +10,13 @@ export const PALETTES: { id: PaletteId; label: string }[] = [
   { id: "nature-notes", label: "自然笔记" },
 ];
 
-export function allowedLayouts(graph: GraphLike): LayoutKind[] {
-  if ("stages" in graph) return ["swimlane-roadmap", "timeline"];
-  if ("question" in graph) return ["debate-grid", "cluster-board", "radial-map"];
-  return [...new Set<LayoutKind>([graph.kind, "cluster-board", "radial-map", "evidence-tree"])];
-}
-
-export function applyPresentation(graph: GraphLike, layout: LayoutKind, palette: PaletteId): KnowledgeGraph {
+/**
+ * 只切换调色板；版式（layout）由生成时的图类型决定，不再提供运行时切换
+ * （运行时布局切换在多种图类型上渲染不稳定，已按用户要求移除该控件）。
+ */
+export function applyPalette(graph: GraphLike, palette: PaletteId): KnowledgeGraph {
   const normalized = normalizeAgentGraph(graph);
   if (!normalized) throw new Error("不支持的图数据");
-  if (!allowedLayouts(graph).includes(layout)) throw new Error("该图不支持这个布局");
-  return { ...normalized, kind: layout, presentation: { ...normalized.presentation, layout, palette } };
+  const layout = normalized.presentation.layout ?? normalized.kind;
+  return { ...normalized, presentation: { ...normalized.presentation, layout, palette } };
 }
