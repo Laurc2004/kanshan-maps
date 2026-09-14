@@ -30,6 +30,12 @@ body {
   100% { transform: translateX(300%); }
 }
 
+/* 刘看山静态图的轻微漂浮动画（替代动图，降低视觉疲劳） */
+@keyframes float-soft {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+
 /* ── Excalidraw 深度定制：贴合产品、去掉原生痕迹 ── */
 /* Excalidraw 的紫不只在 --color-primary：选中框用 --color-selection，
    hover 背景用 --color-surface-high（#f1f0ff 淡紫）、品牌态 --color-brand-*、

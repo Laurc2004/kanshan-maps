@@ -676,7 +676,7 @@ export default function Home() {
       <header className="shrink-0 border-b border-[#e8e8e3] bg-white">
         <div className="flex h-12 items-center gap-3 px-4">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/liukanshan/sway.gif" alt="刘看山" className="h-8 w-8" />
+          <img src="/liukanshan/static-sway.png" alt="刘看山" className="h-8 w-8" />
           <div className="leading-tight">
             <h1 className="text-[15px] font-bold text-[#1a1a1a]">一图看山</h1>
           </div>
@@ -1048,9 +1048,9 @@ export default function Home() {
                 </>
               ) : (
                 <>
-                  {/* 单张 hello 动图，无框无阴影 */}
+                  {/* 静态图 + 轻微漂浮动画，避免动图视觉疲劳 */}
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src="/liukanshan/hello.gif" alt="" className="h-36 w-36" />
+                  <img src="/liukanshan/static-hello.png" alt="" className="h-36 w-36 animate-[float-soft_4s_ease-in-out_infinite]" />
                   <div>
                     <h2 className="mb-2 text-2xl font-bold text-[#1a1a1a]">
                       看山是山，看山不是山，看山还是山
