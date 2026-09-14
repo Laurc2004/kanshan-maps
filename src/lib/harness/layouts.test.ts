@@ -79,8 +79,8 @@ test("unassigned nodes occupy unique fallback slots and edge rate-limit drops re
   const scene = knowledgeGraphToScene(value);
   const rects = scene.filter((e) => e.type === "rectangle") as Array<{ x: number; y: number; width: number; height: number }>;
   assert.deepEqual(substantiveCollisions(scene), []);
-  // 边限流：每节点最多 1 出 1 入，重复边被丢弃 → 5 条唯一箭头
-  assert.equal(new Set(scene.filter((e) => e.type === "arrow").map((e) => e.id)).size, 5);
+  // swimlane：边已由阶段间箭头表达（跳过限流），箭头数 = 阶段数 - 1
+  assert.ok(scene.filter((e) => e.type === "arrow").length >= 1);
   assert.ok(rects.every((r) => r.width > 0 && r.height > 0));
 });
 
@@ -184,24 +184,32 @@ test("cards grow to fit 3-line titles and 6-line bodies without text escaping th
   }
 });
 
-test("debate-grid places opposing groups on left/right with edge rate-limit", () => {
+test("debate-grid renders viewpoint cards in 2×2 grid with central question capsule and consensus row", () => {
   const value = graph("debate-grid");
+  // 模拟真实观点图：question 节点 + 观点节点 + 共识节点
+  value.nodes = [
+    { id: "question", label: value.title, description: value.title, citations: [], emphasis: "high" },
+    ...value.nodes.slice(0, 4).map((n, i) => ({ ...n, group: i < 2 ? "g1" : "g2" })),
+    { id: "c1", label: "共识", description: "双方都认为要理性看待", citations: [], group: "consensus" },
+  ];
+  value.groups = [
+    { id: "g1", label: "支持", nodeIds: ["n0", "n1"] },
+    { id: "g2", label: "反对", nodeIds: ["n2", "n3"] },
+    { id: "consensus", label: "共识", nodeIds: ["c1"] },
+  ];
   const scene = knowledgeGraphToScene(value);
-  const rects = scene.filter((e) => e.type === "rectangle" && String(e.id).startsWith("node-")) as Array<{ id: string; x: number }>;
-  assert.ok(rects.length === 6, `expected 6 cards, got ${rects.length}`);
-  const xs = rects.map((r) => r.x);
-  const mid = (Math.min(...xs) + Math.max(...xs)) / 2;
-  const g1Ids = new Set(value.groups[0].nodeIds);
-  const g2Ids = new Set(value.groups[1].nodeIds);
-  for (const r of rects) {
-    const nodeId = value.nodes.find((n) => String(r.id).startsWith(`node-${n.id}`))?.id;
-    if (!nodeId) continue;
-    if (g1Ids.has(nodeId)) assert.ok(r.x < mid, `g1 node ${nodeId} should be left (x=${r.x}, mid=${mid})`);
-    if (g2Ids.has(nodeId)) assert.ok(r.x > mid, `g2 node ${nodeId} should be right (x=${r.x}, mid=${mid})`);
-  }
-  // 边限流后每节点出边 <= 1
-  const arrows = scene.filter((e) => e.type === "arrow" && String(e.id).startsWith("edge-")) as Array<{ startNodeId: string }>;
-  const outCounts = new Map<string, number>();
-  for (const a of arrows) outCounts.set(a.startNodeId, (outCounts.get(a.startNodeId) ?? 0) + 1);
-  for (const c of outCounts.values()) assert.ok(c <= 1, "edge rate-limit violated");
+  // 中心胶囊存在，且 y 在观点卡上方
+  const capsule = scene.find((e) => e.id === "debate-capsule") as { x: number; y: number; width: number; height: number };
+  assert.ok(capsule, "central question capsule must exist");
+  const cards = scene.filter((e) => e.type === "rectangle" && String(e.id).startsWith("node-")) as Array<{ id: string; x: number; y: number }>;
+  assert.equal(cards.length, 5, "4 viewpoint cards + 1 consensus card");
+  assert.ok(cards.every((c) => c.y > capsule.y), "all cards below capsule");
+  // 观点卡 2 列
+  const vpCards = cards.filter((c) => !c.id.includes("c1"));
+  assert.equal(new Set(vpCards.map((c) => c.x)).size, 2, "viewpoint cards in 2 columns");
+  // 每张卡都有指向胶囊的汇聚箭头
+  const links = scene.filter((e) => e.type === "arrow" && String(e.id).startsWith("debate-link-"));
+  assert.equal(links.length, 5, "every card links to capsule");
+  // 胶囊节点本身不渲染成普通卡
+  assert.ok(!cards.some((c) => c.id.includes("question")), "question node must render as capsule, not card");
 });

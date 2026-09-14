@@ -55,7 +55,7 @@ export function resolvePresentation(plan: Pick<RunPlan, "layout" | "style" | "pr
 
 export function presentationTokens(spec: PresentationSpec): PresentationTokens {
   const density = spec.density === "compact" ? { spacing: 0.78, cardScale: 0.9 } : spec.density === "spacious" ? { spacing: 1.35, cardScale: 1.08 } : { spacing: 1, cardScale: 1 };
-  const stroke = spec.stroke === "sketch" ? { roughness: 2, strokeWidth: 2, strokeStyle: "solid" as const } : spec.stroke === "marker" ? { roughness: 1, strokeWidth: 4, strokeStyle: "solid" as const } : { roughness: 0, strokeWidth: 2, strokeStyle: "solid" as const };
+  const stroke = spec.stroke === "sketch" ? { roughness: 2, strokeWidth: 2, strokeStyle: "solid" as const } : spec.stroke === "marker" ? { roughness: 1, strokeWidth: 4, strokeStyle: "solid" as const } : { roughness: 1, strokeWidth: 2, strokeStyle: "solid" as const };
   return {
     palette: PALETTES[spec.palette] ?? PALETTES["zhihu-blue"],
     ...density,

@@ -54,6 +54,22 @@ function arrow(id: string, from: Point, to: Point, startNodeId: string, endNodeI
   const dx = to.x - from.x, dy = to.y - from.y;
   return { ...base(id, "arrow", { x, y, width: Math.max(1, Math.abs(dx)), height: Math.max(1, Math.abs(dy)) }, tokens), points: [[from.x - x, from.y - y], [to.x - x, to.y - y]], lastCommittedPoint: null, startBinding: null, endBinding: null, startArrowhead: null, endArrowhead: "arrow", startNodeId, endNodeId };
 }
+// 手绘曲线箭头：旧观点图/路线图同款 —— 3 点贝塞尔（中间控制点垂直偏移 bend×len），
+// roundness type 2 = 曲线（type 3 是折角直线）。手绘感来自全局 roughness，不靠直角折线。
+function curveArrow(id: string, from: Point, to: Point, startNodeId: string, endNodeId: string, tokens: ReturnType<typeof presentationTokens>, bend = 0.12, color?: string): SceneElement {
+  const mx = (from.x + to.x) / 2, my = (from.y + to.y) / 2;
+  const dx = to.x - from.x, dy = to.y - from.y;
+  const len = Math.hypot(dx, dy) || 1;
+  const ox = (-dy / len) * len * bend, oy = (dx / len) * len * bend;
+  const x = Math.min(from.x, to.x, mx + ox), y = Math.min(from.y, to.y, my + oy);
+  return {
+    ...base(id, "arrow", { x, y, width: Math.max(1, Math.abs(dx) + Math.abs(ox)), height: Math.max(1, Math.abs(dy) + Math.abs(oy)) }, tokens),
+    points: [[from.x - x, from.y - y], [mx + ox - x, my + oy - y], [to.x - x, to.y - y]],
+    roundness: { type: 2 },
+    ...(color ? { strokeColor: color } : {}),
+    lastCommittedPoint: null, startBinding: null, endBinding: null, startArrowhead: null, endArrowhead: "arrow", startNodeId, endNodeId,
+  };
+}
 function header(graph: KnowledgeGraph, tokens: ReturnType<typeof presentationTokens>): SceneElement[] {
   return [text("graph-title", 60, 30, wrap(graph.title, tokens.titleSize, 420, 2), tokens.titleSize, tokens.palette.title, 420, tokens), ...(graph.summary ? [text("graph-summary", 60, 30 + tokens.titleSize * 2.5, wrap(graph.summary, tokens.evidenceSize, 420, 3), tokens.evidenceSize, tokens.palette.muted, 420, tokens)] : [])];
 }
@@ -68,8 +84,11 @@ function cardHeight(node: KnowledgeNode, width: number, tokens: ReturnType<typeo
 }
 function card(node: KnowledgeNode, box: Box, index: number, tokens: ReturnType<typeof presentationTokens>, fillIndex = index, link?: string | null): SceneElement[] {
   const id = `node-${safeId(node.id)}`;
-  const fill = tokens.palette.fills[fillIndex % tokens.palette.fills.length];
-  const stroke = tokens.palette.strokes[fillIndex % tokens.palette.strokes.length];
+  // fillIndex < 0：白底卡（泳道内节点，描边用泳道色 = -fillIndex-1）
+  const whiteFill = fillIndex < 0;
+  const colorIdx = (whiteFill ? -fillIndex - 1 : fillIndex) % tokens.palette.fills.length;
+  const fill = whiteFill ? "#ffffff" : tokens.palette.fills[colorIdx];
+  const stroke = tokens.palette.strokes[colorIdx % tokens.palette.strokes.length];
   const innerWidth = box.width - CARD_PAD * 2;
   const title = wrap(node.label, tokens.keyFindingSize, innerWidth, TITLE_MAX_LINES);
   const body = wrap(node.description, tokens.evidenceSize, innerWidth, BODY_MAX_LINES);
@@ -101,6 +120,7 @@ function positions(graph: KnowledgeGraph, layout: LayoutKind, tokens: ReturnType
   if (layout === "debate-grid") {
     // 观点对照版式：中心问题胶囊 + 观点卡 2×2 网格（列内垂直堆叠）+ 共识卡底部通栏
     // 问题/强调卡（id=question 或 emphasis=high）不进网格，由 render() 画成中心胶囊
+    const boxes: Box[] = [];
     const groupOf = (nodeId: string) => graph.groups.findIndex((grp) => grp.nodeIds.includes(nodeId));
     const viewpoints: number[] = [], consensus: number[] = [];
     nodes.forEach((node, i) => {
@@ -141,6 +161,7 @@ function positions(graph: KnowledgeGraph, layout: LayoutKind, tokens: ReturnType
     return nodes.map((node, i) => ({ x: 60 + i * (width + gap), y: i % 2 === 0 ? 220 : 220 + row0Max + gap, width, height: heightOf(node) }));
   }
   if (layout === "swimlane-roadmap") {
+    // 泳道横排：每组一条泳道（背景框由 render() 画），节点在泳道内竖排
     const lanes = new Map<number, number[]>();
     const slots = nodes.map((node, i) => {
       const slot = groupSlot(graph, node.id, i);
@@ -149,8 +170,9 @@ function positions(graph: KnowledgeGraph, layout: LayoutKind, tokens: ReturnType
       return slot;
     });
     const laneYs = new Map<number, Map<number, number>>();
-    for (const [group, members] of lanes) laneYs.set(group, stackY(members.map((i) => ({ index: i, height: heightOf(nodes[i]) })), 210, gap));
-    return nodes.map((node, i) => ({ x: 60 + slots[i].group * (width + 100 * tokens.spacing), y: laneYs.get(slots[i].group)!.get(i)!, width, height: heightOf(node) }));
+    for (const [group, members] of lanes) laneYs.set(group, stackY(members.map((i) => ({ index: i, height: heightOf(nodes[i]) })), 210 + 64, gap));
+    // 节点 x：泳道左缘 + 内边距 16
+    return nodes.map((node, i) => ({ x: 60 + slots[i].group * (width + 100 * tokens.spacing) + 16, y: laneYs.get(slots[i].group)!.get(i)!, width: width - 32, height: heightOf(nodes[i]) }));
   }
   if (layout === "cluster-board") {
     const clusters = new Map<number, number[]>();
@@ -237,7 +259,49 @@ function render(graph: KnowledgeGraph, layout: LayoutKind): SceneElement[] {
     }
     return null;
   };
-  boxes.forEach((box, i) => elements.push(...card(graph.nodes[i], box, i, tokens, i + (layout === "cluster-board" ? 1 : 0), nodeLink(graph.nodes[i]))));
+  const isCapsuleNode = layout === "debate-grid" ? (node: KnowledgeNode) => node.id === "question" || node.emphasis === "high" : () => false;
+  boxes.forEach((box, i) => {
+    if (isCapsuleNode(graph.nodes[i])) return; // 中心胶囊在下方单独渲染
+    // swimlane：节点卡用白色底 + 泳道色描边，浮在彩色泳道框上（旧学习路线版式）
+    const fillIdx = layout === "swimlane-roadmap" ? -(groupSlot(graph, graph.nodes[i].id, i).group + 1) : i + (layout === "cluster-board" ? 1 : 0);
+    elements.push(...card(graph.nodes[i], box, i, tokens, fillIdx, nodeLink(graph.nodes[i])));
+  });
+  if (layout === "debate-grid") {
+    // 观点对照版式：中心问题胶囊（走廊上方居中）+ 每张观点卡 → 胶囊的汇聚箭头
+    const capsuleIdx = graph.nodes.slice(0, 12).findIndex(isCapsuleNode);
+    const grid = boxes.filter((_, i) => !isCapsuleNode(graph.nodes[i]));
+    const gridW = grid.length ? Math.max(...grid.map((b) => b.x + b.width)) - Math.min(...grid.map((b) => b.x)) : CARD_W * tokens.cardScale;
+    const gridX = grid.length ? Math.min(...grid.map((b) => b.x)) : 70;
+    const qW = 300;
+    const qText = capsuleIdx >= 0 ? `Q · ${wrap(graph.nodes[capsuleIdx].label, 18, qW - 36, 2)}` : "";
+    const qLines = qText ? qText.split("\n").length : 1;
+    const capsuleH = Math.max(72, qLines * 18 * LINE_HEIGHT + 34);
+    const capsule: Box = { x: gridX + (gridW - qW) / 2, y: 150, width: qW, height: capsuleH };
+    elements.push(
+      { ...base("debate-capsule", "rectangle", capsule, tokens), backgroundColor: tokens.palette.accentFill, strokeColor: tokens.palette.accentStroke, strokeWidth: tokens.strokeWidth + 0.5 },
+      ...(capsuleIdx >= 0 ? [{ ...text("debate-capsule-text", capsule.x + 18, capsule.y + 16, qText, 18, tokens.palette.accentStroke, qW - 36, tokens), textAlign: "center" }] : []),
+    );
+    // 观点卡 → 胶囊的汇聚曲线箭头（旧观点图手法：两端点分别取卡片/胶囊边缘交点，弧线不穿卡）
+    const capsuleNodeId = capsuleIdx >= 0 ? graph.nodes[capsuleIdx].id : "question";
+    const edgePoint = (from: Box, to: Box): { start: Point; end: Point } => {
+      const cx = from.x + from.width / 2, cy = from.y + from.height / 2;
+      const tx = to.x + to.width / 2, ty = to.y + to.height / 2;
+      const onBox = (box: Box, px: number, py: number): Point => {
+        const bx = box.x + box.width / 2, by = box.y + box.height / 2;
+        const dx = px - bx, dy = py - by;
+        if (dx === 0 && dy === 0) return { x: bx, y: by };
+        const t = Math.min(dx === 0 ? Infinity : box.width / 2 / Math.abs(dx), dy === 0 ? Infinity : box.height / 2 / Math.abs(dy));
+        return { x: bx + dx * t, y: by + dy * t };
+      };
+      return { start: onBox(from, tx, ty), end: onBox(to, cx, cy) };
+    };
+    boxes.forEach((box, i) => {
+      if (isCapsuleNode(graph.nodes[i])) return;
+      const { start, end } = edgePoint(box, capsule);
+      const bend = (box.x + box.width / 2 < capsule.x + capsule.width / 2 ? 1 : -1) * 0.12;
+      elements.push(curveArrow(`debate-link-${i}`, start, end, graph.nodes[i].id, capsuleNodeId, tokens, bend));
+    });
+  }
   if (layout === "evidence-tree") {
     const mindmap = graph.metadata?.mode === "summary";
     // 思维导图：根节点放在左右两列之间的走廊，垂直中心与分支列中心精确对齐
@@ -273,7 +337,8 @@ function render(graph: KnowledgeGraph, layout: LayoutKind): SceneElement[] {
   const seenEdges = new Map<string, number>();
   // 边限流：每个节点最多连 1 条出边 + 1 条入边，只保留语义最强的关系，防止蜘蛛网
   const outCount = new Map<string, number>(), inCount = new Map<string, number>();
-  for (const edge of graph.edges) {
+  // debate-grid：边已由「卡→胶囊」汇聚箭头表达，跳过 edges 防蜘蛛网；swimlane 同理（阶段箭头已画）
+  if (layout !== "debate-grid" && layout !== "swimlane-roadmap") for (const edge of graph.edges) {
     const from = graph.nodes.findIndex((node) => node.id === edge.fromId), to = graph.nodes.findIndex((node) => node.id === edge.toId);
     if (from < 0 || to < 0 || !boxes[from] || !boxes[to]) continue;
     if ((outCount.get(edge.fromId) ?? 0) >= 1 || (inCount.get(edge.toId) ?? 0) >= 1) continue;
@@ -285,14 +350,33 @@ function render(graph: KnowledgeGraph, layout: LayoutKind): SceneElement[] {
     const { start, end } = anchors(boxes[from], boxes[to]);
     elements.push(arrow(`edge-${key}-${occurrence}`, start, end, edge.fromId, edge.toId, tokens));
   }
-  // debate-grid：阵营标签 + 中轴分隔线
-  if (layout === "debate-grid" && graph.groups.length >= 2) {
-    const labels: [string, number][] = [[graph.groups[0].label, 80], [graph.groups[1].label, 80 + (CARD_W * tokens.cardScale + 60 * tokens.spacing) * 2 + 120]];
-    for (const [label, x] of labels) {
-      elements.push(text(`side-label-${x}`, x, 180, wrap(label, tokens.titleSize, 320, 1), tokens.titleSize, tokens.palette.title, 320, tokens));
+  if (layout === "swimlane-roadmap") {
+    // 泳道背景框 + 阶段标题 + 阶段间曲线箭头（学习路线旧版式）
+    const scale = tokens.cardScale;
+    const laneW = CARD_W * scale;
+    const laneGroups = new Map<number, Box[]>();
+    boxes.forEach((box, i) => {
+      const slot = groupSlot(graph, graph.nodes[i].id, i);
+      if (!laneGroups.has(slot.group)) laneGroups.set(slot.group, []);
+      laneGroups.get(slot.group)!.push(box);
+    });
+    const laneBoxes: { group: number; box: Box }[] = [];
+    for (const [group, members] of [...laneGroups.entries()].sort((a, b) => a[0] - b[0])) {
+      const x = 60 + group * (laneW + 100 * tokens.spacing);
+      const bottom = Math.max(...members.map((b) => b.y + b.height));
+      const laneBox: Box = { x, y: 210, width: laneW, height: bottom - 210 + 16 };
+      laneBoxes.push({ group, box: laneBox });
+      const label = graph.groups[group]?.label ?? `第${group + 1}站`;
+      elements.unshift(
+        { ...base(`lane-${group}`, "rectangle", laneBox, tokens), backgroundColor: tokens.palette.fills[group % tokens.palette.fills.length], strokeColor: tokens.palette.strokes[group % tokens.palette.strokes.length], opacity: 55 },
+        text(`lane-head-${group}`, x + 18, 230, wrap(`第${group + 1}站 · ${label}`, tokens.keyFindingSize, laneW - 36, 1), tokens.keyFindingSize, tokens.palette.strokes[group % tokens.palette.strokes.length], laneW - 36, tokens),
+      );
     }
-    const midX = 80 + CARD_W * tokens.cardScale + 60 * tokens.spacing;
-    elements.push({ ...base("debate-divider", "line", { x: midX, y: 170, width: 0, height: Math.max(...boxes.map((b) => b.y + b.height), 900) - 170 }, tokens), points: [[0, 0], [0, Math.max(...boxes.map((b) => b.y + b.height), 900) - 170]], strokeStyle: "dashed", strokeWidth: 1, opacity: 60 });
+    // 阶段间曲线箭头（泳道间走廊内，旧路线图同款微弯）
+    for (let k = 0; k < laneBoxes.length - 1; k++) {
+      const a = laneBoxes[k].box, b = laneBoxes[k + 1].box;
+      elements.push(curveArrow(`lane-arrow-${k}`, { x: a.x + a.width + 8, y: a.y + 70 }, { x: b.x - 8, y: b.y + 70 }, `lane-${k}`, `lane-${k + 1}`, tokens, (k % 2 === 0 ? 0.1 : -0.1), tokens.palette.muted));
+    }
   }
   return elements;
 }
