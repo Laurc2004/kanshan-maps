@@ -1048,9 +1048,9 @@ export default function Home() {
                 </>
               ) : (
                 <>
-                  {/* 静态图 + 轻微漂浮动画，避免动图视觉疲劳 */}
+                  {/* 单张 hello 动图，无框无阴影 */}
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src="/liukanshan/static-hello.png" alt="" className="h-36 w-36 animate-[float-soft_4s_ease-in-out_infinite]" />
+                  <img src="/liukanshan/hello.gif" alt="" className="h-36 w-36" />
                   <div>
                     <h2 className="mb-2 text-2xl font-bold text-[#1a1a1a]">
                       看山是山，看山不是山，看山还是山
