@@ -146,6 +146,11 @@
 - 样式问题：globals.css 有暗色 media query 会把背景刷成 #0a0a0a 与组件硬编码亮色冲突 → 需移除
 
 
+## 提交物料包发现（Phase 28）
+- 计划书应以现有 README、已验证的 Harness 架构和知乎 Hackathon 评分维度为事实基础，不写入任何凭据。
+- 视觉统一方向已获用户确认：知乎蓝、纸感米白、手绘知识地图、刘看山；封面 16:9，ICON 正方形。
+- 交付目录按用户偏好放在 `~/Desktop/一图看山-知乎黑客松提交包/`；图片需在生成后实际检查格式、尺寸和文件大小。
+
 ## Phase 27 发现（2026-09-14）
 - 看山助手「只能加内容」的根因是五层缺失叠加，不是单一 bug：①GraphChange 契约无 add 系操作 ②router 无新增意图正则 ③clarify 吞咽条件（低置信+无 targetIds）把新增请求（本就无现有目标）拦成追问 ④渲染层装饰箭头（lane-arrow/debate-consensus-link/evidence-root-edge）不来自 graph.edges，任何边操作都碰不到它们 ⑤AgentContext 不给模型 edges 和空 label 分组，模型无从操作
 - 装饰连线的可操作化方案：remove_edges 把 "fromId→toId" 记入 metadata.removedEdges，渲染层三类箭头（数据边/lane-N→lane-N+1/question→debate-consensus/evidence-root→节点）统一查该集合隐藏；add_edge 同 key 恢复可逆。lane 删除时派生记录 lane-arrow-N 一并登记/清除

@@ -87,6 +87,14 @@
 - [ ] P2 Supabase 持久化：maps 表（question/graph/view_count/created_at），热图墙数据基础
 - [ ] UI：减少刘看山 GIF 重复使用（空状态静态化 / 仅保留生成中+Agent 头像两处动图）
 
+### Phase 28: 知乎黑客松提交物料包 — status: in_progress
+- [x] 产品说明计划书（Markdown，按用户要求以 README 为基础重写，突出评委眼球点）
+- [x] 快速上手与架构说明文档（面向用户/开发者）
+- [x] 项目简介（一句话介绍 + 多版本备选）
+- [ ] 16:9 刘看山主题封面图（图片生成服务 gpt-image-2 当前 502「unknown provider」，用户指示暂缓，恢复后补）
+- [ ] 正方形项目 ICON（同上）
+- [x] 文档统一整理至 `~/Desktop/一图看山-知乎黑客松提交包/`
+
 ### Phase 7: 用户反馈修复轮（布局层叠 / Agent 改图失效 / 导出图片 / 列表扩容）— status: complete
 背景：上一轮（1e1c38e）交付放射布局+缓存+去 Excalidraw 化后，用户实测发现 4+1 个问题。
 

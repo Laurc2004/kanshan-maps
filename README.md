@@ -4,7 +4,7 @@
 
 **把一个问题下的多元回答，炼成一张可编辑、可追溯、可对话修改的手绘知识地图。**
 
-![一图看山 × 刘看山](public/liukanshan/readme-hero.png)
+![一图看山 × 刘看山](public/liukanshan/readme-hero.webp)
 
 [在线体验](https://kanshan.space) · [知乎黑客松 2026 · 校园新锐季](https://www.zhihu.com/hackathon) · 📚 知识炼金场赛道
 
@@ -34,6 +34,8 @@
 - 🤖 **看山助手（对话改图）** — Agent 2.0：语义化 GraphChange 协议 + 风险分级 + 原子提交 + 预览确认。不只是改文字换颜色——**说「再加第四点」就新增卡片、「用大卡片包住 A 和 B」就画出分组容器、「去掉这条箭头」就精确删连线（可逆恢复）**，画板实时更新并给出逐条操作回执。
 - 🎨 **完全可编辑** — 画布基于 [Excalidraw](https://excalidraw.com/)，生成后可以自由拖改、切换配色（保留你的排版）、导出高清 PNG。
 - 👤 **我的看山** — 登录后集中管理生成的地图、收藏夹与关注内容；未登录也有个人中心入口。
+
+![一图看山 工作台界面](public/liukanshan/app-screenshot.webp)
 
 ## 与评审维度的对照
 
