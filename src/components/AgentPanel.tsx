@@ -250,7 +250,7 @@ export default function AgentPanel({
         {messages.length === 0 && (
           <div className="flex flex-col items-center gap-3 pt-10 text-center">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/liukanshan/static-sway.png" alt="刘看山" className="h-24 w-24 animate-[float-soft_4s_ease-in-out_infinite]" />
+            <img src="/liukanshan/static-ball.png" alt="刘看山" className="h-24 w-24" />
             <p className="px-4 text-xs leading-5 text-gray-500">
               图生成后，可以直接让我改：
               <br />
