@@ -176,13 +176,13 @@
 - 注意坑：工具回显会把 `apiKey: string` 打码成 `***`，看起来像文件损坏，实际 on-disk 完好，不要被误导去"修"
 - 实施中发现两个真 bug 已修：骨架阶段 parseSkeleton 传空顶层 citations 导致节点引用被 validateCitations 清空（改为从节点 citation id 推导）；pruneFillerNodes 保底逻辑写反（cited.length===nodes.length 时反而去裁）
 
-### Phase 15: 五项反馈修复（子代理并行）— status: in_progress
-- [ ] B1 收藏夹内容完整展示：ProfileCenter 列表容器 max-h-72 改为撑满面板剩余空间；openFavlist 加载后默认不勾选（去掉全选）
-- [ ] B2 顶栏加独立「我的看山」入口按钮（不再挂在已登录名字按钮上）
-- [ ] B3 ProfileCenter 去除「关注」tab 及 followees prop 链路
-- [ ] B4 换色不变版式根修：legacy 渲染器元素 id 带随机后缀导致按 id 映射坐标全 miss → nid() 改确定性 id，changePalette 坐标映射生效
-- [ ] B5 SourceIndex 限最大宽度不与右下角画板控件重叠
-- [ ] B6 验证：全量测试/lint/build + E2E + 提交部署
+### Phase 15: 五项反馈修复（子代理并行）— status: complete
+- [x] B1 收藏夹内容完整展示：ProfileCenter 列表容器 max-h-72 改为撑满面板剩余空间；openFavlist 加载后默认不勾选（去掉全选）
+- [x] B2 顶栏独立「我的看山」胶囊入口（不再挂在已登录名字按钮上）
+- [x] B3 去除关注 tab 及 prop 链路 及 followees prop 链路
+- [x] B4 换色不变版式根修：legacy 渲染器元素 id 带随机后缀导致按 id 映射坐标全 miss → nid() 改确定性 id，changePalette 坐标映射生效
+- [x] B5 SourceIndex 限宽不遮挡不与右下角画板控件重叠
+- [x] B6 验证全绿 + E2E（入口可见/换色无错/无重叠）+ 1a9bf05 部署生产
 （B1 → ProfileCenter.tsx；B2/B3/B5 → page.tsx+SourceIndex.tsx；B4 → excalidraw-layout.ts）
 
 ### Phase 14: 六项样式修复（子代理并行）— status: complete

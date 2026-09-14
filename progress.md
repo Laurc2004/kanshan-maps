@@ -213,3 +213,11 @@
 - 用户三项决策：①版式切换渲染不稳定 → 整个移除（applyPresentation → applyPalette，layout 锁定为图自身 kind）②「一键分享至知乎」按钮删除，只留「保存图片」（不再挤在一块）③颜色下拉改为自定义 dropdown（色板圆点+chevron+选中勾，点击外部/Esc 关闭），非原生 select
 - 验证：tsc 0 错 / 149 tests（143 pass 0 fail 6 skip）/ lint 0 error / build 过
 - 提交 bf2c4a4 推送；生产 READY；kanshan.space 200
+
+## Session 14 — 2026-09-14（Phase 15: 五项反馈修复）— complete
+- B1 收藏夹列表去 max-h-72 完整展示；打开收藏夹不再全选
+- B2 顶栏独立「我的看山」入口；名字标签纯展示
+- B3 个人中心去除关注 tab
+- B4 换色变版式根因：legacy 渲染器 nid() 含 Date.now() 随机后缀，changePalette 按 id 映射坐标全 miss；改确定性 id（scope#seq+内容哈希+稳定 seed），回归测试断言两次渲染 id 逐元素相等
+- B5 SourceIndex max-w min(62vw,100%-16rem) 不与右下控件重叠
+- 验证：全量测试/tsc/lint/build 绿 + E2E（我的看山入口可见、换色无页面错误、来源索引与控件 no-overlap）；1a9bf05 已部署生产
