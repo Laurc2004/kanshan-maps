@@ -279,3 +279,11 @@
 - layouts.ts：移除 debate-link 汇聚箭头（含 curveArrow3 helper），只保留胶囊→共识横幅绿色连线；归属表达靠列头立场标签+按列分色
 - layouts.ts：card/cardHeight 加 fullText 参数——debate 卡片标题/正文取消行数上限、卡高按完整内容撑开；positions debate 分支卡片加宽 320→400（两列+140 间隙=940）
 - 验证：全量 166/166、tsc 0、lint 0 error、build 过；E2E 真实生成断言全 PASS（无箭头/卡宽 400/卡文字零截断/2 组对立/共识通栏/页眉居中）
+
+## Session 25 — 2026-09-14（刘看山常驻动图改静态 + 轻微漂浮）— deployed
+- 用户反馈：左上角 logo gif 要换静态图；中间（空状态 hello）和右边（助手空状态 sway）两张常驻 gif 视觉疲劳
+- magick 抽首帧生成 static-sway/static-hello/static-idle.png（320×320 透明，原图为黑白卡通，灰度 PNG 无损）
+- page.tsx：header logo sway.gif→static-sway.png；画板空状态 hello.gif→static-hello.png；AgentPanel.tsx 空状态 sway.gif→static-sway.png，两处大图加 animate-[float-soft_4s_ease-in-out_infinite]
+- globals.css 新增 float-soft keyframes（translateY -6px 缓慢漂浮，存在感远低于动图）
+- 保留：working.gif（生成中 loading，非长期显示）、idle.gif（登录态/弹窗小图标）
+- 验证：tsc 0 / lint 0 error / build 过；6fea11d 已部署生产（curl 200 + 首页 HTML 含 static-*.png）
