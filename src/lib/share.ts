@@ -48,6 +48,6 @@ export async function addWatermark(blob: Blob): Promise<Blob> {
   ctx.drawImage(bitmap, 0, 0);
   ctx.fillStyle = "#0066ff";
   ctx.font = "600 28px sans-serif";
-  ctx.fillText("一图看山 · 来源知乎", 32, bitmap.height + 58);
+  ctx.fillText("一图看山 kanshan.space · 来源知乎", 32, bitmap.height + 58);
   return new Promise((resolve) => canvas.toBlob((value) => resolve(value ?? blob), "image/png"));
 }
