@@ -74,7 +74,6 @@ export default function Home() {
   const [pendingClear, setPendingClear] = useState(false); // 清空画布确认弹窗
   const [me, setMe] = useState<{ loggedIn: boolean; name?: string }>({ loggedIn: false });
   const [followeeCount, setFolloweeCount] = useState(0);
-  const [followeeNames, setFolloweeNames] = useState<string[]>([]);
   const [savedBoards, setSavedBoards] = useState<SavedBoard[]>([]);
   const [activeFavlist, setActiveFavlist] = useState<{ urlToken: number; title: string; description: string } | null>(null);
   const [favlistItems, setFavlistItems] = useState<SearchResultItem[]>([]);
@@ -152,7 +151,6 @@ export default function Home() {
           (d.names ?? []).map((n: string) => n.replace(/\s+/g, "").toLowerCase())
         );
         followeesRef.current = names;
-        setFolloweeNames((d.names ?? []).filter((name: unknown): name is string => typeof name === "string"));
         setFolloweeCount(names.size);
         if (graphRef.current) renderGraphRef.current(graphRef.current, names);
       })
@@ -538,7 +536,7 @@ export default function Home() {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "收藏夹内容获取失败");
       const next = (data.items ?? []) as SearchResultItem[];
-      setFavlistItems(next); setSelectedFavlistIds(new Set(next.map((item) => item.ContentID)));
+      setFavlistItems(next); setSelectedFavlistIds(new Set());
     } catch (cause) { setError(cause instanceof Error ? cause.message : "收藏夹读取失败"); setFavlistItems([]); setSelectedFavlistIds(new Set()); }
     finally { setFavlistLoading(false); }
   }, [favlistLoading]);
@@ -716,17 +714,18 @@ export default function Home() {
                 }
                 setShowProfile((v) => !v);
               }}
-              title={me.loggedIn ? "个人中心（收藏夹 / 本机地图 / 关注）" : "个人中心（知乎登录后可用收藏夹 / 关注）"}
-              className={`rounded-full border p-2 transition ${
+              title={me.loggedIn ? "我的看山（收藏夹 / 本机地图）" : "我的看山（知乎登录后可用收藏夹）"}
+              className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs transition ${
                 showProfile
                   ? "border-[#0066ff]/30 bg-[#f0f5ff] text-[#0066ff]"
-                  : "border-gray-200 text-gray-400 hover:border-[#0066ff]/30 hover:text-[#0066ff]"
+                  : "border-gray-200 text-gray-500 hover:border-[#0066ff]/30 hover:text-[#0066ff]"
               }`}
             >
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" />
                 <circle cx="12" cy="7" r="4" />
               </svg>
+              我的看山
             </button>
             <button
               onClick={() => setPendingClear(true)}
@@ -756,14 +755,10 @@ export default function Home() {
               <div className="flex items-center gap-1.5 rounded-full border border-[#0066ff]/20 bg-[#f0f5ff] py-1 pl-1 pr-3">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src="/liukanshan/idle.gif" alt="" className="h-6 w-6" />
-                <button
-                  onClick={() => setShowProfile((v) => !v)}
-                  className="text-xs font-medium text-[#0066ff] hover:underline"
-                  title="打开个人中心（收藏夹 / 关注的人）"
-                >
+                <span className="text-xs font-medium text-[#0066ff]">
                   {me.name ?? "已登录"}
                   {followeeCount > 0 && <span className="ml-1 text-[10px] font-normal text-gray-400">关注{followeeCount}人</span>}
-                </button>
+                </span>
                 <button
                   onClick={() =>
                     fetch("/api/auth/logout", { method: "POST" }).then(() => {
@@ -931,7 +926,7 @@ export default function Home() {
       <div className="flex min-h-0 flex-1">
         {/* 左栏：展开=面板；收起=细条（点击细条重新展开），与右栏交互一致 */}
         {showProfile && me.loggedIn ? (
-      <ProfileCenter name={me.name} boards={savedBoards} favlists={favlists} followees={followeeNames} busy={loading} favlistLoading={favlistLoading} activeFavlist={activeFavlist} favlistItems={favlistItems} selectedIds={selectedFavlistIds} onClose={() => setShowProfile(false)} onOpenBoard={openSavedBoard} onDeleteBoard={(id) => setSavedBoards(deleteBoard(localStorage, id))} onOpenFavlist={openFavlist} onToggleItem={(id) => setSelectedFavlistIds((current) => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next; })} onGenerateFavlist={generateFavlistSelection} />
+      <ProfileCenter name={me.name} boards={savedBoards} favlists={favlists} busy={loading} favlistLoading={favlistLoading} activeFavlist={activeFavlist} favlistItems={favlistItems} selectedIds={selectedFavlistIds} onClose={() => setShowProfile(false)} onOpenBoard={openSavedBoard} onDeleteBoard={(id) => setSavedBoards(deleteBoard(localStorage, id))} onOpenFavlist={openFavlist} onToggleItem={(id) => setSelectedFavlistIds((current) => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next; })} onGenerateFavlist={generateFavlistSelection} />
         ) : showSources ? (
           <SourcesPanel
             items={items}

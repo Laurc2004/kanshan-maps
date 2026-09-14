@@ -5,7 +5,7 @@ import type { SavedBoard } from "@/lib/local-library";
 import type { SearchResultItem } from "@/lib/zhihu";
 
 type Favlist = { urlToken: number; title: string; description: string };
-type Tab = "maps" | "favorites" | "following";
+type Tab = "maps" | "favorites";
 
 function EmptyState({ icon, hint, sub }: { icon: string; hint: string; sub?: string }) {
   return (
@@ -20,14 +20,13 @@ function EmptyState({ icon, hint, sub }: { icon: string; hint: string; sub?: str
 }
 
 /**
- * 左侧栏「个人中心」：三 tab（本机地图 / 知乎收藏夹 / 关注），
+ * 左侧栏「个人中心」：两 tab（本机地图 / 知乎收藏夹），
  * 与素材栏互斥展示（由 page.tsx 控制），tab 样式与素材栏同款胶囊。
  */
-export default function ProfileCenter({ name, boards, favlists, followees, busy, favlistLoading, activeFavlist, favlistItems, selectedIds, onClose, onOpenBoard, onDeleteBoard, onOpenFavlist, onToggleItem, onGenerateFavlist }: {
+export default function ProfileCenter({ name, boards, favlists, busy, favlistLoading, activeFavlist, favlistItems, selectedIds, onClose, onOpenBoard, onDeleteBoard, onOpenFavlist, onToggleItem, onGenerateFavlist }: {
   name?: string;
   boards: SavedBoard[];
   favlists: Favlist[];
-  followees: string[];
   busy: boolean;
   favlistLoading: boolean;
   activeFavlist: Favlist | null;
@@ -44,7 +43,6 @@ export default function ProfileCenter({ name, boards, favlists, followees, busy,
   const tabs: { id: Tab; label: string; count?: number }[] = [
     { id: "maps", label: "地图", count: boards.length },
     { id: "favorites", label: "收藏夹", count: favlists.length },
-    { id: "following", label: "关注", count: followees.length },
   ];
   return (
     <section className="profile-center thin-scroll flex h-full w-80 max-w-[85vw] shrink-0 flex-col border-r border-[#e8e8e3] bg-white text-sm" data-testid="profile-center">
@@ -124,7 +122,7 @@ export default function ProfileCenter({ name, boards, favlists, followees, busy,
                   <p className="px-1 py-4 text-center text-xs text-gray-500">正在读取收藏内容…</p>
                 ) : activeFavlist ? (
                   <>
-                    <div className="thin-scroll max-h-72 overflow-y-auto">
+                    <div className="thin-scroll">
                       {favlistItems.map((item, i) => {
                         const checked = selectedIds.has(item.ContentID);
                         return (
@@ -190,19 +188,6 @@ export default function ProfileCenter({ name, boards, favlists, followees, busy,
           </div>
         )}
 
-        {tab === "following" && (
-          <div>
-            {followees.length ? (
-              <div className="flex flex-wrap content-start gap-1.5">
-                {followees.map((followee) => (
-                  <span key={followee} className="rounded-full bg-[#f4f4f0] px-2.5 py-1 text-[10px] text-gray-600">{followee}</span>
-                ))}
-              </div>
-            ) : (
-              <EmptyState icon="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2M12 3a4 4 0 100 8 4 4 0 000-8z" hint="接口暂未返回关注数据" />
-            )}
-          </div>
-        )}
       </div>
     </section>
   );

@@ -176,7 +176,16 @@
 - 注意坑：工具回显会把 `apiKey: string` 打码成 `***`，看起来像文件损坏，实际 on-disk 完好，不要被误导去"修"
 - 实施中发现两个真 bug 已修：骨架阶段 parseSkeleton 传空顶层 citations 导致节点引用被 validateCitations 清空（改为从节点 citation id 推导）；pruneFillerNodes 保底逻辑写反（cited.length===nodes.length 时反而去裁）
 
-### Phase 14: 六项样式修复（子代理并行）— status: in_progress
+### Phase 15: 五项反馈修复（子代理并行）— status: in_progress
+- [ ] B1 收藏夹内容完整展示：ProfileCenter 列表容器 max-h-72 改为撑满面板剩余空间；openFavlist 加载后默认不勾选（去掉全选）
+- [ ] B2 顶栏加独立「我的看山」入口按钮（不再挂在已登录名字按钮上）
+- [ ] B3 ProfileCenter 去除「关注」tab 及 followees prop 链路
+- [ ] B4 换色不变版式根修：legacy 渲染器元素 id 带随机后缀导致按 id 映射坐标全 miss → nid() 改确定性 id，changePalette 坐标映射生效
+- [ ] B5 SourceIndex 限最大宽度不与右下角画板控件重叠
+- [ ] B6 验证：全量测试/lint/build + E2E + 提交部署
+（B1 → ProfileCenter.tsx；B2/B3/B5 → page.tsx+SourceIndex.tsx；B4 → excalidraw-layout.ts）
+
+### Phase 14: 六项样式修复（子代理并行）— status: complete
 - [ ] S1 收藏夹文章样式对齐知乎回答卡片（ProfileCenter favorites tab：头像/作者/标题/摘要/查看原文，同 SourcesPanel 结构）
 - [ ] S2 个人中心入口核查（已有 ProfileCenter+顶栏入口；确认入口可见性，不明显则强化）
 - [ ] S3 换颜色只变色调不变版式：changePalette 不再全量重排（保留旧元素坐标只换色），修 applyPalette/renderGraph 路径

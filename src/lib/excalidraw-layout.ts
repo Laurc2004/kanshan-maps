@@ -27,8 +27,27 @@ function palette(style: ViewpointGraph["style"] = "default") {
   return { fills: STANCE_FILLS, strokes: STANCE_STROKES, consensusFill: CONSENSUS_FILL, consensusStroke: CONSENSUS_STROKE, title: TITLE_COLOR, muted: MUTED };
 }
 
-let uid = 0;
-const nid = (p: string) => `${p}_${Date.now().toString(36)}_${uid++}`;
+// ── 确定性元素 id ─────────────────────────────
+// changePalette / applyAgentGraph 靠「同一布局器重生成 + 按元素 id 映射旧坐标」保留用户排版。
+// 旧 nid() 带 Date.now() 随机后缀，同一图两次渲染 id 全不同 → 坐标映射全 miss → 换配色版式乱。
+// 现改为：渲染开始 beginIds(scope) 重置计数器；每次取 id = 前缀_作用域#序号_内容哈希。
+// 同一图遍历顺序确定（slice/map/forEach 均按数组序），故两次渲染 id 序列逐元素相等。
+let idSeq = 0;
+let idScope = "scene";
+function beginIds(scope: string) {
+  idSeq = 0;
+  idScope = scope;
+}
+// FNV-1a 32bit：稳定内容哈希，保证同前缀不同内容的元素 id 不相撞
+function hashStr(s: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h >>> 0).toString(36);
+}
+const nid = (p: string, key = "") => `${p}_${idScope}#${idSeq++}${key ? `_${hashStr(key)}` : ""}`;
 const rad = (deg: number) => (deg * Math.PI) / 180;
 
 type El = Record<string, unknown>;
@@ -92,9 +111,9 @@ function finalize(els: El[]): El[] {
       locked: false,
       updated: 1,
       ...e,
-      seed: 100000 + ((uid * 48271 + i * 7919) % 900000),
+      seed: 100000 + ((i * 48271) % 900000),
       version: 1,
-      versionNonce: (uid * 31 + i) % 2147483647,
+      versionNonce: (i * 31 + 7) % 2147483647,
       index: "a" + String(i++).padStart(4, "0"),
     }));
 }
@@ -109,6 +128,7 @@ function block(
   color: string,
   align: "left" | "center" = "left",
   maxLines = 8,
+  key = "",
 ): { el: El; height: number } {
   const { text: wrapped, lines } = wrapText(text, fontSize, maxW, maxLines);
   const w = Math.min(maxW, Math.max(...wrapped.split("\n").map((l) => textWidth(l, fontSize)), 40));
@@ -116,7 +136,7 @@ function block(
   return {
     el: {
       type: "text",
-      id: nid("txt"),
+      id: nid("txt", key || wrapped),
       x,
       y,
       width: w,
@@ -141,11 +161,11 @@ function card(
   h: number,
   fill: string,
   stroke: string,
-  opts: { angle?: number; strokeWidth?: number } = {},
+  opts: { angle?: number; strokeWidth?: number; key?: string } = {},
 ): El {
   return {
     type: "rectangle",
-    id: nid("card"),
+    id: nid("card", opts.key ?? ""),
     x,
     y,
     width: w,
@@ -160,7 +180,7 @@ function card(
 }
 
 // 三点曲线箭头
-function curveArrow(x1: number, y1: number, x2: number, y2: number, color: string, bend = 0, strokeWidth = 2): El {
+function curveArrow(x1: number, y1: number, x2: number, y2: number, color: string, bend = 0, strokeWidth = 2, key = ""): El {
   const mx = (x1 + x2) / 2;
   const my = (y1 + y2) / 2;
   const dx = x2 - x1;
@@ -170,7 +190,7 @@ function curveArrow(x1: number, y1: number, x2: number, y2: number, color: strin
   const oy = (dx / len) * len * bend;
   return {
     type: "arrow",
-    id: nid("arrow"),
+    id: nid("arrow", key),
     x: x1,
     y: y1,
     width: x2 - x1,
@@ -205,7 +225,7 @@ function edgePoint(cx: number, cy: number, w: number, h: number, tx: number, ty:
 // ─────────────────────────────────────────────
 export function graphToScene(g: ViewpointGraph, followedAuthors: Set<string> = new Set()): El[] {
   const els: El[] = [];
-  uid = 0;
+  beginIds("graph");
   const colors = palette(g.style);
   const CARD_W = 460; // 内文本宽 = 460 - 44 padding
   const TEXT_W = CARD_W - 44;
@@ -236,10 +256,10 @@ export function graphToScene(g: ViewpointGraph, followedAuthors: Set<string> = n
   const vs = g.viewpoints.slice(0, 4);
   const cards = vs.map((v, i) => {
     const followed = v.authors.some((a) => followedAuthors.has(a));
-    const stanceT = block(0, 0, TEXT_W, `${followed ? "★ " : ""}${v.stance}`, 21, colors.strokes[i % 4], "left", 1);
-    const authorsT = block(0, 0, TEXT_W, "", 13, colors.muted, "left", 1);
-    const summaryT = block(0, 0, TEXT_W, v.summary, 14, colors.title, "left", 4);
-    const evidences = (v.evidence ?? []).slice(0, 2).map((ev) => block(0, 0, TEXT_W - 14, `· ${ev}`, 12, colors.muted, "left", 2));
+    const stanceT = block(0, 0, TEXT_W, `${followed ? "★ " : ""}${v.stance}`, 21, colors.strokes[i % 4], "left", 1, `stance:${v.stance}`);
+    const authorsT = block(0, 0, TEXT_W, "", 13, colors.muted, "left", 1, `authors:${i}`);
+    const summaryT = block(0, 0, TEXT_W, v.summary, 14, colors.title, "left", 4, `summary:${v.stance}`);
+    const evidences = (v.evidence ?? []).slice(0, 2).map((ev, ei) => block(0, 0, TEXT_W - 14, `· ${ev}`, 12, colors.muted, "left", 2, `ev:${v.stance}#${ei}`));
     const inner =
       18 + stanceT.height + 6 + 10 + summaryT.height + 10 +
       evidences.reduce((a, e) => a + e.height + 4, 0) + 18;
@@ -265,7 +285,7 @@ export function graphToScene(g: ViewpointGraph, followedAuthors: Set<string> = n
     const fill = colors.fills[i % 4];
     const tilt = rad(i % 2 === 0 ? 0.5 : -0.5);
 
-    els.push(card(p.x, p.y, p.w, p.h, fill, stroke, { angle: tilt, strokeWidth: i === 0 ? 2.5 : 2 }));
+    els.push(card(p.x, p.y, p.w, p.h, fill, stroke, { angle: tilt, strokeWidth: i === 0 ? 2.5 : 2, key: `vp:${c.v.stance}` }));
 
     let cy = p.y + 18;
     els.push({ ...c.stanceT.el, x: p.x + 22, y: cy });
@@ -282,7 +302,7 @@ export function graphToScene(g: ViewpointGraph, followedAuthors: Set<string> = n
     const ccy = p.y + p.h / 2;
     const [sx, sy] = edgePoint(ccx, ccy, p.w + 16, p.h + 16, W / 2, qY + qH / 2);
     const [ex, ey] = edgePoint(W / 2, qY + qH / 2, qW + 24, qH + 24, ccx, ccy);
-    els.push(curveArrow(sx, sy, ex, ey, stroke, (i % 2 === 0 ? 1 : -1) * 0.12, 2));
+    els.push(curveArrow(sx, sy, ex, ey, stroke, (i % 2 === 0 ? 1 : -1) * 0.12, 2, `link:${c.v.stance}`));
   });
 
   // 共识条：全部卡片下方通栏
@@ -312,7 +332,7 @@ export function graphToScene(g: ViewpointGraph, followedAuthors: Set<string> = n
 // ─────────────────────────────────────────────
 export function roadmapToScene(g: RoadmapGraph): El[] {
   const els: El[] = [];
-  uid = 0;
+  beginIds("roadmap");
 
   const LANE_W = 300;
   const GAP = 110;
@@ -333,12 +353,12 @@ export function roadmapToScene(g: RoadmapGraph): El[] {
     const stroke = STANCE_STROKES[si % STANCE_STROKES.length];
 
     // 阶段标题
-    const headT = block(0, 0, LANE_W - 36, `第${si + 1}站 · ${stage.title}`, 19, stroke, "left", 1);
+    const headT = block(0, 0, LANE_W - 36, `第${si + 1}站 · ${stage.title}`, 19, stroke, "left", 1, `head:${stage.title}`);
 
     // 节点：先算内容高度
     const items = stage.items.slice(0, 4).map((it) => {
-      const topicT = block(0, 0, NODE_TEXT_W, it.topic, 15, TITLE_COLOR, "left", 1);
-      const detailT = block(0, 0, NODE_TEXT_W, it.detail, 12, MUTED, "left", 3);
+      const topicT = block(0, 0, NODE_TEXT_W, it.topic, 15, TITLE_COLOR, "left", 1, `topic:${it.topic}`);
+      const detailT = block(0, 0, NODE_TEXT_W, it.detail, 12, MUTED, "left", 3, `detail:${it.topic}`);
       const srcT = null;
       const h = 14 + topicT.height + 4 + detailT.height + 0 + 12;
       return { it, topicT, detailT, srcT, h: Math.max(86, h) };
@@ -348,13 +368,13 @@ export function roadmapToScene(g: RoadmapGraph): El[] {
     const laneH = 20 + headT.height + 10 + items.reduce((a, n) => a + n.h + NODE_GAP, 0) + 6;
     lanes.push({ x, y: Y0, w: LANE_W, h: laneH });
 
-    els.push(card(x, Y0, LANE_W, laneH, fill, stroke, { angle: rad(si % 2 === 0 ? 0.4 : -0.4) }));
+    els.push(card(x, Y0, LANE_W, laneH, fill, stroke, { angle: rad(si % 2 === 0 ? 0.4 : -0.4), key: `lane:${stage.title}` }));
     // 注意：block() 返回 { el, height }，必须展开 .el；曾误展开整个对象导致无 type 非法元素 → 整板空白
     els.push({ ...headT.el, x: x + 18, y: Y0 + 20 });
 
     let ny = Y0 + 20 + headT.height + 10;
     items.forEach((n) => {
-      const nodeEl = card(x + 16, ny, NODE_W, n.h, "#ffffff", stroke);
+      const nodeEl = card(x + 16, ny, NODE_W, n.h, "#ffffff", stroke, { key: `node:${n.it.topic}` });
       if (n.it.source) nodeEl.link = n.it.source;
       els.push(nodeEl);
       let iy = ny + 12;
@@ -371,7 +391,7 @@ export function roadmapToScene(g: RoadmapGraph): El[] {
   for (let si = 0; si < lanes.length - 1; si++) {
     const a = lanes[si];
     const b = lanes[si + 1];
-    els.push(curveArrow(a.x + a.w + 8, a.y + 90, b.x - 8, b.y + 90, "#868e96", si % 2 === 0 ? 0.1 : -0.1, 2.5));
+    els.push(curveArrow(a.x + a.w + 8, a.y + 90, b.x - 8, b.y + 90, "#868e96", si % 2 === 0 ? 0.1 : -0.1, 2.5, `stage:${si}`));
   }
 
   return finalize(els);
