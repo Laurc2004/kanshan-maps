@@ -26,12 +26,12 @@
 
 ## 核心能力
 
-- 🔭 **观点对照图** — 输入问题，自动检索知乎回答，提取各方论点、证据与立场，生成共识区 + 分歧阵营的对照图。你关注的答主会被自动高亮。
+- 🔭 **观点对照图** — 输入问题，自动检索知乎回答，提取各方论点、证据与立场，生成共识区 + 分歧阵营的左右对照图。你关注的答主会被自动高亮。
 - 🗺 **学习路线图** — 领域关键词 → 入门 / 进阶 / 避坑的泳道路径图，可以直接从你的知乎收藏夹生成。
-- 📝 **文章摘要思维导图** — 粘贴知乎回答 / 文章链接，秒出中心主题 + 左右分支的摘要图。
-- 🤖 **看山助手（对话改图）** — Agent 2.0：语义化 GraphChange 协议 + 风险分级 + 原子提交 + 预览确认。说「精简共识区」「换成手绘风」，画板实时更新并给出逐条操作回执。
-- 🎨 **完全可编辑** — 画布基于 [Excalidraw](https://excalidraw.com/)，生成后可以自由拖改、换布局、切换视觉风格、导出高清 PNG。
-- 👤 **我的看山** — 登录后集中管理生成的地图、收藏夹与关注内容。
+- 📝 **文章摘要图** — 勾选知乎收藏夹里的回答 / 文章（或搜索后勾选），提炼中心主题与要点分支的摘要图。
+- 🤖 **看山助手（对话改图）** — Agent 2.0：语义化 GraphChange 协议 + 风险分级 + 原子提交 + 预览确认。说「精简共识区」「合并这两个节点」，画板实时更新并给出逐条操作回执。
+- 🎨 **完全可编辑** — 画布基于 [Excalidraw](https://excalidraw.com/)，生成后可以自由拖改、切换配色（保留你的排版）、导出高清 PNG。
+- 👤 **我的看山** — 登录后集中管理生成的地图、收藏夹与关注内容；未登录也有个人中心入口。
 
 ## 与评审维度的对照
 
@@ -41,9 +41,9 @@
 
 **创新度（25%）** — 区别于红海的「文章转导图」，本项目做了三件不常见的事：① 多源观点对照与阵营化表达；② 图不是终点——Agent 以受约束的语义操作协议（而非自由文本）连续修改图表；③ 生成链路是可解释的 Harness 编排，每个阶段对用户可见（见下文架构）。
 
-**完成度（25%）** — 生产环境已上线并完成真实 OAuth 闭环验证，152 项测试（146 通过 / 0 失败 / 6 OAuth 场景跳过）、TypeScript 零错误、ESLint 零错误、16 条路由全量构建通过。
+**完成度（25%）** — 生产环境已上线并完成真实 OAuth 闭环验证，150 项测试（144 通过 / 0 失败 / 6 OAuth 场景跳过）、TypeScript 零错误、ESLint 零错误、16 条路由全量构建通过。
 
-**产品体验与设计感（10%）** — 三栏工作台（知乎上下文 / 画板 / AI 助手），知乎蓝 × 纸感米白视觉体系，SSE 流式出图（骨架先行、细节渐入），手绘风格画布 + 思维导图 / 对照表 / 泳道多种版式一键切换。
+**产品体验与设计感（10%）** — 三栏工作台（知乎上下文 / 画板 / AI 助手），知乎蓝 × 纸感米白视觉体系，SSE 流式出图（骨架先行、细节渐入，编排各阶段进度在看山助手面板逐步可见），三种生成模式（观点对照 / 学习路线 / 文章摘要）自动匹配合适版式。
 
 ## 技术架构：Knowledge-Map Harness
 
@@ -71,8 +71,8 @@
    │  (统一 KnowledgeGraph IR)  │    阶段二：细节（渐进补齐）
    └───────┬───────────────────┘
            ▼
-  Layout Selector ─┬─ Style Selector   ← 6 种确定性布局模板 + 参数化风格
-           ▼       │    （知乎蓝 / 柔彩 / 单色研究 / 醒目海报 / 自然笔记）
+  Layout Selector ─┬─ Style Selector   ← 6 种确定性布局模板（对立辩论 / 环形 / 时间线 / 泳道 / 分簇 / 证据树）
+           ▼       │    + 5 套配色（知乎蓝 / 纸张粉彩 / 研究灰 / 海报色 / 自然笔记）
       Scene Validator               ← 引用覆盖率 / 节点质量 / 无重叠 / 无裁切硬校验
            ▼
    Excalidraw Renderer（可编辑画布）
@@ -83,7 +83,7 @@
 - **模型不画图** — LLM 只产出统一 KnowledgeGraph IR（节点 / 边 / 分组 / 引用），坐标由确定性布局器计算。同类问题可得到结构迥异但均无重叠的图，彻底规避「模型生成坐标 = 抽奖」。
 - **引用即契约** — 每个节点必须携带至少一条真实 citation，`Scene Validator` 校验引用覆盖率，不达标节点直接裁剪。卡片链接指向真实知乎 URL，模型无法编造来源。
 - **两阶段流式综合** — 骨架（标题 / 分组 / 节点短语）先到先渲染，细节（观点描述）渐进补齐。单阶段模型输出从 ~4K token 降到 ~1.5K，首屏可视时间减半。
-- **Agent 2.0 改图协议** — 语义化 GraphChange（add / merge / emphasize / set_style / relayout…）替代自由文本 patch；风险分级 + 原子提交 + 预览确认；结构变更触发受控重排，纯文字修改保留用户坐标（局部重渲染）。
+- **Agent 2.0 改图协议** — 语义化 GraphChange（rename / emphasize / merge / remove / set_presentation / relayout…）替代自由文本 patch；风险分级 + 原子提交 + 高危操作预览确认；结构变更触发受控重排，纯文字修改与配色切换保留用户坐标（局部重渲染）。
 - **预算与降级** — 知乎搜索 / 热榜 / 直答额度有限，Planner 强制预算裁剪；单数据源失败不拖垮整链，规则编排器作为 LLM 规划失败的兜底。
 - **编排透明** — 每个阶段产生 HarnessEvent，经 SSE 实时展示当前正在「规划 → 检索 → 综合 → 布局 → 验证」的哪一步，不是黑盒转圈。
 
@@ -123,6 +123,7 @@ src/
 │   │   ├── auth/           # 知乎 OAuth（state 防 CSRF · HMAC 签名会话 cookie）
 │   │   ├── generate/       # SSE 流式生成（stream）+ 单次生成
 │   │   ├── agent/          # 看山助手对话改图
+│   │   ├── search/         # 只搜回答不生成（自选素材流程）
 │   │   └── me/             # 关注列表 / 收藏夹（登录态）
 │   └── page.tsx            # 三栏工作台
 ├── components/             # SourcesPanel / AgentPanel / BoardControls / ProfileCenter …
@@ -132,23 +133,23 @@ src/
     │   ├── executor.ts     #   有限步骤执行器（预算 / 并行检索 / 降级）
     │   ├── sources.ts      #   SourceAdapter 统一接口 + 规范化层
     │   ├── synthesizer.ts  #   两阶段综合 → KnowledgeGraph IR
-    │   ├── layouts.ts      #   6 种确定性布局 + 参数化风格
+    │   ├── layouts.ts      #   6 种确定性布局 + 动态卡高防重叠
     │   └── patch.ts        #   Agent 语义操作协议
     ├── agent/              # Agent 2.0（意图路由 / 风险分级 / 原子应用）
-    ├── zhihu.ts            # 知乎 API 客户端（搜索/热榜/关注流/收藏夹/文章）
+    ├── zhihu.ts            # 知乎 API 客户端（搜索/热榜/关注流/收藏夹）
     └── session.ts          # HMAC 签名会话
 ```
 
 ## 测试与质量
 
 ```bash
-npm run lint         # ESLint
-npx tsc --noEmit     # 类型检查
-npm test             # 单元 + 组件测试
-npm run build        # 生产构建
+npm run lint                 # ESLint
+npx tsc --noEmit             # 类型检查
+node --test --experimental-strip-types 'src/**/*.test.ts'   # 单元 + 组件测试
+npm run build                # 生产构建
 ```
 
-当前基线：152 tests（146 pass / 0 fail / 6 OAuth 场景在有凭证环境跳过）· tsc 0 error · lint 0 error · 16 路由构建全过。Harness 各层（planner / executor / sources / synthesizer / layouts / patch / compat）均有独立回归测试，布局模板含「零重叠 / 零超宽」断言。
+当前基线：150 tests（144 pass / 0 fail / 6 OAuth 场景在有凭证环境跳过）· tsc 0 error · lint 0 error · 16 路由构建全过。Harness 各层（planner / executor / sources / synthesizer / layouts / patch / compat）与 Agent 2.0（router / decide / apply）均有独立回归测试，布局模板含「零重叠 / 零超宽 / 文字不出卡」断言。
 
 ## 路线图
 
