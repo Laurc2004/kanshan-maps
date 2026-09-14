@@ -202,3 +202,9 @@
 - 未采纳：#5 小屏隐藏文字（renderTopRightUI 自身有响应式）、#19 移除用户胶囊入口（保留双入口）、#4 全局 font 覆盖（font-family: inherit 已足够）
 - 验证：tsc 0 错 / 152 tests 0 fail / lint 0 error / build 16 路由过
 - 提交 0547f81 推送；生产部署 READY；kanshan.space 200、OAuth redirect_uri 指向新域名
+
+## Session 20 续3 — 2026-09-14（移除知乎链接抓取功能）— complete
+- 用户决策：链接解析存在版权风险，整链路移除
+- 删除：zhihu.ts 的 isZhihuUrl/parseZhihuArticleHtml/fetchZhihuArticleByUrl；stream 路由 URL 分支；输入框粘贴自动切摘要逻辑与 placeholder 提示；zhihu-url.test.ts
+- 验证：tsc 0 错 / 148 tests（142 pass 0 fail 6 skip）/ lint 0 error / build 过
+- 提交 5074819 推送；生产 READY；线上实测：粘贴链接不再走抓取分支，回到正常关键词搜索链路（sources 事件正常返回）
