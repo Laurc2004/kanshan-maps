@@ -14,6 +14,7 @@ export type GraphChange =
   | { type: "rewrite_consensus"; items: string[] }
   | { type: "set_presentation"; patch: Partial<PresentationSpec> }
   | { type: "set_mode"; mode: "summary" | null } // 版式切换：summary=思维导图（中心主题+左右分支）；null=还原证据树
+  | { type: "set_links"; enabled: boolean } // 卡片原文超链接开关（false=去除所有卡片链接，保留底部来源索引）
   | { type: "relayout"; scope: "local" | "all" };
 
 export type Risk = "low" | "medium" | "high";

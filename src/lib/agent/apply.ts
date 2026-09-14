@@ -94,6 +94,9 @@ export function validateChanges(graph: KnowledgeGraph, changes: GraphChange[]): 
       case "set_mode":
         need(c.mode === "summary" || c.mode === null, "set_mode 只支持 summary 或 null");
         break;
+      case "set_links":
+        need(typeof c.enabled === "boolean", "set_links 需要 enabled 布尔值");
+        break;
       case "relayout":
         need(c.scope === "local" || c.scope === "all", "relayout scope 无效");
         break;
@@ -190,6 +193,12 @@ function applyOne(g: KnowledgeGraph, c: GraphChange): string {
       }
       if (g.metadata) delete g.metadata.mode;
       return "已还原为证据树版式";
+    }
+    case "set_links": {
+      // 超链接开关：记录在 metadata.linksEnabled（渲染层读它决定卡片是否带 link）
+      // 不动 citations——来源数据保留，底部来源索引照常展示
+      g.metadata = { ...g.metadata, linksEnabled: c.enabled };
+      return c.enabled ? "已恢复卡片上的原文链接" : "已去除卡片上的原文链接（底部来源索引仍保留）";
     }
     case "relayout":
       return c.scope === "all" ? "已重新布局整图" : "已局部重排";

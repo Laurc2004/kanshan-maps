@@ -264,6 +264,14 @@
 - [x] 18.6 Share: helper covers cited copy, safe filename, cancellation classification, clipboard/download/watermark primitives; panel integration present.
 - [x] 18.7 Release: full Node runner, typecheck, lint, build, diff check, local production HTTP/API smoke, Playwright desktop/mobile UI smoke, commit/push, Vercel production deploy and public readback.
 
+## Phase 23: 摘要中心文字居中 + 看山助手超链接开关 — status: complete
+背景：用户反馈 ①文章摘要中间椭圆里的文字不居中 ②跟看山助手说「去除超链接」却改了内容、始终去不掉。
+
+- [x] T1 椭圆文字居中：evidence-root-text 原固定 +30/+35 偏移（换行/密度变化时偏上），改为文字块中心对齐椭圆中心 + textAlign center / verticalAlign middle
+- [x] T2 超链接开关：新增 set_links 语义变更（types/apply/router/decide 四层 + 模型 prompt）。「去除/不要/删掉链接」优先路由到 style（不再误判成删节点改内容）；开关存 metadata.linksEnabled，渲染层 layouts.ts nodeLink 读它决定卡片是否带 link；citations 不动、底部来源索引保留；「恢复链接」可逆
+- [x] T3 前端重绘判定：geometryChanged 增加监听 metadata.linksEnabled，开关变化强制全量重渲染
+- [x] T4 验证：全量 166 tests（160 pass/0 fail/6 skip）· tsc 0 错 · lint 0 error · build 16 路由 · 真实 API 实测（去除→changed+linksEnabled=false+节点描述未变；恢复→linksEnabled=true）· E2E 真实画板（椭圆文字中心偏移 0、生成期 3 卡带链接、0 pageerror）
+
 ## Phase 22: 摘要思维导图几何根修 + Agent 版式切换修复 — status: complete
 背景：用户反馈 ①文章摘要思维导图箭头重叠/压卡、中间卡片不垂直居中 ②看山助手无法修改结构/样式（说「换成思维导图」图不变）。
 

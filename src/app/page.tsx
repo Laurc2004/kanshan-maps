@@ -600,8 +600,9 @@ export default function Home() {
     (g: GraphState, appliedLabels?: string[]) => {
       const previous = graphRef.current;
       const nextMode: Mode = "stages" in g ? "roadmap" : graphMode;
-      // presentation 任一视觉字段（版式/密度/层级/调色/线条）或 metadata.mode（思维导图开关）变化
-      // 都视为几何变化，必须全量重渲染（只换色换字才保留用户坐标）
+      // presentation 任一视觉字段（版式/密度/层级/调色/线条）或 metadata.mode（思维导图开关）
+      // 或 metadata.linksEnabled（超链接开关）变化都视为几何/属性变化，必须全量重渲染
+      // （只换色换字才保留用户坐标）
       const geometryChanged =
         ("presentation" in g &&
           (!previous ||
@@ -610,8 +611,10 @@ export default function Home() {
               (key) => JSON.stringify(g.presentation[key as keyof typeof g.presentation]) !== JSON.stringify(previous.presentation[key as keyof typeof previous.presentation])
             ))) ||
         ("nodes" in g &&
-          (g as KnowledgeGraph).metadata?.mode !==
-            (previous && "nodes" in previous ? (previous as KnowledgeGraph).metadata?.mode : undefined));
+          ((g as KnowledgeGraph).metadata?.mode !==
+            (previous && "nodes" in previous ? (previous as KnowledgeGraph).metadata?.mode : undefined) ||
+            (g as KnowledgeGraph).metadata?.linksEnabled !==
+              (previous && "nodes" in previous ? (previous as KnowledgeGraph).metadata?.linksEnabled : undefined)));
       setGraph(g);
       graphRef.current = g;
       setGraphMode(nextMode);

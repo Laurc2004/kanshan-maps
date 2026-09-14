@@ -1,3 +1,16 @@
+## Session 22 — 2026-09-14（摘要椭圆文字居中 + 助手超链接开关）— complete
+- 椭圆文字居中：evidence-root-text 从固定 +30/+35 偏移改为「文字块中心==椭圆中心」+ textAlign center / verticalAlign middle，折行/密度变化不漂。
+- 超链接开关：「去除超链接」原路由进 structure/model 被误当删改内容；新增 set_links 语义变更（metadata.linksEnabled，可逆），LINK_OFF_RE 路由优先级提到删除规则之前；渲染层 nodeLink 读开关（layouts.ts，该文件经并行会话的 renderer 统一重构后已含同名改动，此处为合流）；citations/底部来源索引不动。
+- geometryChanged 增加 metadata.linksEnabled 监听。
+- 验证命令与结果：
+  - `node --test --experimental-strip-types $(find src -name '*.test.ts'|sort)` → 166 tests / 160 pass / 0 fail / 6 skipped（新增椭圆居中×2、linksEnabled strip/restore、set_links 路由×4/应用/校验用例）
+  - `npx tsc --noEmit` → 0 错；`npm run lint` → 0 error（6 warnings，src 存留 5 + /tmp 检查脚本 1，后者不入库）
+  - `npm run build` → 16 路由通过
+  - 真实 API（dev:3005）：「去除超链接」→ changed:true、applied「已去除…（底部来源索引仍保留）」、linksEnabled:false、节点数与描述不变；「恢复链接」→ linksEnabled:true
+  - E2E 真实画板（scripts/e2e-mindmap.cjs + /tmp/e2e-links.cjs）：椭圆文字中心偏移 0（root 660,580 == text 660,580）、生成期 3 卡带链接、箭头穿卡/卡片重叠 0、0 pageerror
+  - /tmp/e2e-links.cjs、/tmp/agent-link-check.mjs 为临时验证脚本，验证后删除，不入库
+- 部署：commit 待提交 → push + vercel --prod → kanshan.space
+
 ## 2026-09-13：详细技术方案
 
 - 已写入 `docs/2026-09-13-detailed-technical-implementation-plan.md`。

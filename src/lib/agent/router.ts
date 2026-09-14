@@ -10,6 +10,9 @@ const ANSWER_RE = /为什么|怎么看|是什么|核心|分歧|区别|谁对|哪
 const RELAYOUT_RE = /重新排版|重新布局|重排|排一下/;
 const MINDMAP_RE = /思维导图|树状图|左右分支|分支图/;
 const TREE_RE = /证据树|层级树|单侧分支|换回.{0,4}树|还原版式/;
+// 卡片超链接开关：「去除/不要链接」优先于删除/改写类规则（链接是渲染属性，不是内容）
+const LINK_OFF_RE = /(去掉|去除|移除|取消|删掉|删除|关闭|不要|禁用|隐藏).{0,5}(超链接|链接|跳转|网址)|(链接|超链接).{0,4}(去掉|去除|删掉|删除|关闭|取消)/;
+const LINK_ON_RE = /(恢复|打开|加上|加回|开启).{0,4}(超链接|链接|跳转)/;
 
 export interface RouteResult {
   intent: AgentIntent;
@@ -41,6 +44,13 @@ export function routeByRules(message: string, ctx: AgentContext): RouteResult | 
 
   if (RELAYOUT_RE.test(text)) {
     return { intent: "structure", targetIds: [], confidence: "high", reason: "明确重新布局请求" };
+  }
+  // 超链接开关必须在删除/结构规则之前：用户说「去掉链接」不是删内容
+  if (LINK_OFF_RE.test(text) && !LINK_ON_RE.test(text)) {
+    return { intent: "style", targetIds: [], confidence: "high", reason: "去除卡片超链接" };
+  }
+  if (LINK_ON_RE.test(text)) {
+    return { intent: "style", targetIds: [], confidence: "high", reason: "恢复卡片超链接" };
   }
   if (ANSWER_RE.test(text) && !REWRITE_RE.test(text) && !STRUCTURE_RE.test(text)) {
     return { intent: "answer", targetIds: targets, confidence: "high", reason: "解释型问题，不改图" };
@@ -119,6 +129,9 @@ export function changesFromRules(
     if (m) return [{ type: "rename_graph", title: m[1].replace(/^[成为叫\s]+/, "").replace(/[。！!？?]+$/, "") }];
   }
   if (route.intent === "style") {
+    // 超链接开关（在版式/配色之前判定，「去掉链接」不会被误判成删内容或改样式）
+    if (LINK_OFF_RE.test(text) && !LINK_ON_RE.test(text)) return [{ type: "set_links", enabled: false }];
+    if (LINK_ON_RE.test(text)) return [{ type: "set_links", enabled: true }];
     // 思维导图/证据树切换必须 set_mode（metadata.mode）+ 对齐 layout；只改 presentation.layout
     // 会撞上摘要图的思维导图分支（evidence-tree + metadata.mode=summary）渲染不出来
     if (MINDMAP_RE.test(text)) {

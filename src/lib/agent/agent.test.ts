@@ -168,6 +168,40 @@ test("validate: set_mode rejects invalid mode value", () => {
   assert.equal(issues.length, 1);
 });
 
+// 去除超链接：必须走 set_links 开关，而不是删节点/改内容
+test("router: 去除超链接 produces set_links off, not node deletion", () => {
+  const ctx = buildAgentContext(graph());
+  for (const text of ["去除超链接", "把链接去掉", "不要卡片上的跳转链接", "删掉超链接"]) {
+    const route = routeByRules(text, ctx);
+    assert.equal(route?.intent, "style", `"${text}" should route to style, got ${route?.intent}`);
+    const changes = changesFromRules(route!, text, ctx);
+    assert.deepEqual(changes, [{ type: "set_links", enabled: false }], `"${text}" should produce set_links off`);
+  }
+});
+
+test("router: 恢复超链接 produces set_links on", () => {
+  const ctx = buildAgentContext(graph());
+  const route = routeByRules("恢复卡片链接", ctx);
+  const changes = changesFromRules(route!, "恢复卡片链接", ctx);
+  assert.deepEqual(changes, [{ type: "set_links", enabled: true }]);
+});
+
+test("apply: set_links toggles metadata.linksEnabled without touching nodes/citations", () => {
+  const g = graph();
+  const off = applyChangesAtomically(g, [{ type: "set_links", enabled: false }]);
+  assert.equal(off.ok, true);
+  assert.equal(off.graph.metadata?.linksEnabled, false);
+  assert.equal(off.graph.nodes.length, g.nodes.length);
+  assert.deepEqual(off.graph.nodes.map((n) => n.citations), g.nodes.map((n) => n.citations));
+  const on = applyChangesAtomically(off.graph, [{ type: "set_links", enabled: true }]);
+  assert.equal(on.graph.metadata?.linksEnabled, true);
+});
+
+test("validate: set_links rejects non-boolean enabled", () => {
+  const issues = validateChanges(graph(), [{ type: "set_links", enabled: "no" as never }]);
+  assert.equal(issues.length, 1);
+});
+
 test("decision parse: empty changes → answer", () => {
   const d = parseDecision('{"reply":"核心分歧是学历与经验的权衡","changes":[]}', () => "low");
   assert.equal(d?.type, "answer");

@@ -158,6 +158,38 @@ test("summary mindmap root is vertically centered and branch arrows hit card sid
   }
 });
 
+// 中心椭圆标题必须在椭圆内水平垂直居中（文字块中心 == 椭圆中心）
+test("evidence-root title text is centered inside the ellipse", () => {
+  for (const title of ["短标题", "这是一个相当长的文章主题标题需要折成两行来展示"]) {
+    const g: KnowledgeGraph = { ...graph("evidence-tree"), title, metadata: { mode: "summary" }, edges: [] };
+    const scene = knowledgeGraphToScene(g);
+    const root = scene.find((e) => e.id === "evidence-root") as { x: number; y: number; width: number; height: number };
+    const t = scene.find((e) => e.id === "evidence-root-text") as { x: number; y: number; width: number; height: number; textAlign: string; verticalAlign: string };
+    assert.ok(root && t, `root and its text must exist for title "${title}"`);
+    const eps = 1;
+    assert.ok(Math.abs(t.x + t.width / 2 - (root.x + root.width / 2)) <= eps, `text not horizontally centered for "${title}"`);
+    assert.ok(Math.abs(t.y + t.height / 2 - (root.y + root.height / 2)) <= eps, `text not vertically centered for "${title}"`);
+    assert.equal(t.textAlign, "center");
+    assert.equal(t.verticalAlign, "middle");
+  }
+});
+
+// 超链接开关：metadata.linksEnabled=false 时卡片不带 link，citations 数据保留；恢复后链接回来
+test("linksEnabled=false strips card links but keeps citations", () => {
+  const g: KnowledgeGraph = {
+    ...graph("debate-grid"),
+    citations: [{ id: "c1", sourceIndex: 0, url: "https://zhihu.com/a/1", title: "回答一" }],
+  };
+  g.nodes = g.nodes.map((n) => ({ ...n, citations: ["c1"] }));
+  const withLinks = knowledgeGraphToScene(g);
+  assert.ok(withLinks.some((e) => typeof e.link === "string" && (e.link as string).startsWith("https://")), "baseline: cards should carry links");
+  const without = knowledgeGraphToScene({ ...g, metadata: { linksEnabled: false } });
+  assert.ok(without.every((e) => !e.link), "linksEnabled=false must strip all element links");
+  assert.equal(without.length, withLinks.length, "element count unchanged (no content removed)");
+  const restored = knowledgeGraphToScene({ ...g, metadata: { linksEnabled: true } });
+  assert.ok(restored.some((e) => typeof e.link === "string" && (e.link as string).startsWith("https://")), "links restored when re-enabled");
+});
+
 test("cards grow to fit 3-line titles and 6-line bodies without text escaping the card (S5)", () => {
   for (const layout of layouts) {
     const value = graph(layout);

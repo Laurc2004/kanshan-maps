@@ -55,6 +55,11 @@
 - 故事/知识 列表+详情：`https://api.zhihu.com/km-indep-home/hackathon/v2/{story|knowledge}/{list|<work_id>}`
 - 知识接口可用于"学习路线图"场景的补充素材（P1）
 
+## 追加发现：Phase 23（椭圆文字居中 + 超链接开关）
+- Excalidraw 自由文本元素要靠「文字块中心 == 容器中心」手动对齐；固定偏移量在折行数/字号变化时必偏。容器内居中还需 textAlign:center + verticalAlign:middle。
+- 卡片超链接是渲染属性（layouts.ts nodeLink），不是图内容：用户说「去除链接」绝不能删节点/改描述。开关记 metadata.linksEnabled，citations 保留，底部来源索引不受影响。
+- 规则路由优先级：「去掉/删掉链接」会同时命中删除/改写正则，LINK_OFF_RE 必须放在 STRUCTURE_RE 判定之前。
+
 ## 追加发现：Phase 22（摘要思维导图几何 + Agent 版式切换）
 - 思维导图（evidence-tree + metadata.mode=summary）的分支箭头不能用通用 anchors()：根在两列中间，对上下错位卡 |dy|>|dx| 会判成垂直连线从卡顶穿入。思维导图必须强制水平连线、端点贴侧缘中点。
 - 根节点垂直居中必须与 positions() 共用同一口径（colTop + 每列实际卡高累计 + gap），不能用「总卡高 + ⌈n/2⌉−1 间距」近似公式——左右列卡数/卡高不均时近似值必然漂移。
