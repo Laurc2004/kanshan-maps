@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { zhihuSearch, isZhihuUrl, fetchZhihuArticleByUrl } from "@/lib/zhihu";
+import { zhihuSearch } from "@/lib/zhihu";
 import { extractViewpoints } from "@/lib/viewpoints";
 import { buildRoadmapMessages, parseRoadmapJson } from "@/lib/roadmap";
 import { runHarness, resolveGenerationPath } from "@/lib/harness/executor";
@@ -51,7 +51,7 @@ export async function POST(req: NextRequest) {
   const q = question.trim();
   const engineId = engine?.id || "builtin";
   const generationPath = resolveGenerationPath(mode);
-  let userMode = mode === "roadmap" ? "roadmap" : mode === "summary" ? "summary" : "compare";
+  const userMode = mode === "roadmap" ? "roadmap" : mode === "summary" ? "summary" : "compare";
   // 用户自选回答直传（跳过搜索）；缓存键区分，避免污染全量缓存
   const hasPicked = Array.isArray(passedItems) && passedItems.length > 0;
   const cacheMode = userMode === "summary" ? "summary" : generationPath === "harness" ? userMode : userMode === "roadmap" ? "roadmap" : "viewpoint";
@@ -147,19 +147,6 @@ export async function POST(req: NextRequest) {
         if (hasPicked) {
           send("status", { text: `用你选的 ${passedItems.length} 篇回答开始炼图…` });
           items = passedItems;
-        } else if (isZhihuUrl(q)) {
-          // 知乎链接直达：抓取这一篇内容作为唯一素材（强制 summary 模式，不消耗搜索额度）
-          send("status", { text: "正在读取你粘贴的知乎内容…" });
-          try {
-            const article = await fetchZhihuArticleByUrl(q, req.signal);
-            items = [article] as typeof passedItems;
-            userMode = "summary";
-            send("status", { text: `已读取「${article.Title.slice(0, 30)}」，正在总结…` });
-          } catch (e) {
-            send("error", { error: e instanceof Error ? e.message : "读取知乎链接失败" });
-            controller.close();
-            return;
-          }
         } else {
           send("status", { text: "正在搜索知乎相关回答…" });
           items = await zhihuSearch(q, 10);

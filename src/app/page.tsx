@@ -770,21 +770,14 @@ export default function Home() {
         <div className="flex items-center gap-2 border-t border-[#f0f0ec] px-4 py-2">
           <input
             value={question}
-            onChange={(e) => {
-              setQuestion(e.target.value);
-              // 粘贴知乎链接 → 自动切到文章摘要模式（服务端会抓取该链接直接总结）
-              const pasted = e.target.value;
-              if (/^https?:\/\/(www\.zhihu\.com|zhuanlan\.zhihu\.com)\//i.test(pasted.trim())) {
-                setMode((m) => (m === "summary" ? m : "summary"));
-              }
-            }}
+            onChange={(e) => setQuestion(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && generate()}
             placeholder={
               mode === "roadmap"
                 ? "输入学习目标或领域，如：我想做出一个能用的 Agent"
                 : mode === "summary"
-                  ? "输入主题，或直接粘贴知乎文章/回答链接"
-                  : "输入有争议的问题，如：年轻人该不该买房；也可粘贴知乎链接"
+                  ? "输入主题，先找回答并勾选要总结的文章"
+                  : "输入有争议的问题，如：年轻人该不该买房"
             }
             className="min-w-0 flex-1 rounded-full border border-gray-200 bg-[#fafaf7] py-2 pl-4 pr-3 text-sm outline-none transition focus:border-[#0066ff]/60 focus:bg-white focus:shadow-sm"
             disabled={loading}
