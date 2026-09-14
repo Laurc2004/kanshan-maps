@@ -5,8 +5,12 @@ export type SceneElement = Record<string, unknown>;
 type Point = { x: number; y: number };
 type Box = Point & { width: number; height: number };
 const CARD_W = 320;
-const CARD_H = 280;
+const CARD_H = 280; // 卡片最小高度；实际高度按内容行数动态计算
 const LINE_HEIGHT = 1.25;
+const CARD_PAD = 20; // 卡片内边距（上下左右一致）
+const TITLE_MAX_LINES = 3; // S5：标题最多 3 行
+const BODY_MAX_LINES = 6; // S5：描述最多 6 行
+const TITLE_BODY_GAP = 16; // 标题与正文之间的垂直间距
 
 function hash(value: string): number {
   let result = 2166136261;
@@ -21,13 +25,18 @@ function widthOf(value: string, size: number): number {
   for (const char of value) width += /[\u2e80-\u9fff\uf900-\ufaff\uff00-\uffef]/.test(char) ? size : size * 0.55;
   return width;
 }
-function wrap(value: string, size: number, maxWidth: number, maxLines: number): string {
+// 折行并返回实际行（不做截断），行数供高度计算与 wrap() 复用
+function wrapLines(value: string, size: number, maxWidth: number): string[] {
   const lines: string[] = [];
   let line = "";
   for (const char of value.replace(/\s+/g, " ").trim()) {
     if (line && widthOf(line + char, size) > maxWidth) { lines.push(line); line = char; } else line += char;
   }
   if (line) lines.push(line);
+  return lines;
+}
+function wrap(value: string, size: number, maxWidth: number, maxLines: number): string {
+  const lines = wrapLines(value, size, maxWidth);
   if (lines.length === 0) return "";
   const result = lines.slice(0, maxLines);
   if (lines.length > maxLines && result.length) result[result.length - 1] = `${result[result.length - 1].slice(0, -1)}…`;
@@ -48,15 +57,27 @@ function arrow(id: string, from: Point, to: Point, startNodeId: string, endNodeI
 function header(graph: KnowledgeGraph, tokens: ReturnType<typeof presentationTokens>): SceneElement[] {
   return [text("graph-title", 60, 30, wrap(graph.title, tokens.titleSize, 420, 2), tokens.titleSize, tokens.palette.title, 420, tokens), ...(graph.summary ? [text("graph-summary", 60, 30 + tokens.titleSize * 2.5, wrap(graph.summary, tokens.evidenceSize, 420, 3), tokens.evidenceSize, tokens.palette.muted, 420, tokens)] : [])];
 }
+// S5/S6：卡高按实际行数动态计算（上内边距 + 标题行高 + 标题正文间距 + 正文行高 + 下内边距），CARD_H 仅作最小值
+function cardHeight(node: KnowledgeNode, width: number, tokens: ReturnType<typeof presentationTokens>): number {
+  const innerWidth = width - CARD_PAD * 2;
+  const titleLines = Math.min(TITLE_MAX_LINES, wrapLines(node.label, tokens.keyFindingSize, innerWidth).length) || 1;
+  const bodyLines = node.description ? Math.min(BODY_MAX_LINES, wrapLines(node.description, tokens.evidenceSize, innerWidth).length) : 0;
+  const content = CARD_PAD + titleLines * tokens.keyFindingSize * LINE_HEIGHT
+    + (bodyLines ? TITLE_BODY_GAP + bodyLines * tokens.evidenceSize * LINE_HEIGHT + CARD_PAD : CARD_PAD);
+  return Math.max(CARD_H * tokens.cardScale, Math.ceil(content));
+}
 function card(node: KnowledgeNode, box: Box, index: number, tokens: ReturnType<typeof presentationTokens>, fillIndex = index, link?: string | null): SceneElement[] {
   const id = `node-${safeId(node.id)}`;
   const fill = tokens.palette.fills[fillIndex % tokens.palette.fills.length];
   const stroke = tokens.palette.strokes[fillIndex % tokens.palette.strokes.length];
-  const innerWidth = box.width - 40;
-  const title = wrap(node.label, tokens.keyFindingSize, innerWidth, 2);
-  const body = wrap(node.description, tokens.evidenceSize, innerWidth, 4);
-  const elements = [{ ...base(id, "rectangle", box, tokens), backgroundColor: fill, strokeColor: stroke, strokeWidth: node.emphasis === "high" ? tokens.strokeWidth + 1 : tokens.strokeWidth, link: link ?? null, customData: { nodeId: node.id } }, text(`${id}-title`, box.x + 20, box.y + 20, title, tokens.keyFindingSize, stroke, innerWidth, tokens)];
-  if (body) elements.push(text(`${id}-body`, box.x + 20, box.y + 76, body, tokens.evidenceSize, tokens.palette.body, innerWidth, tokens));
+  const innerWidth = box.width - CARD_PAD * 2;
+  const title = wrap(node.label, tokens.keyFindingSize, innerWidth, TITLE_MAX_LINES);
+  const body = wrap(node.description, tokens.evidenceSize, innerWidth, BODY_MAX_LINES);
+  const titleLineCount = title ? title.split("\n").length : 0;
+  // 正文起点紧跟标题实际行数（与 cardHeight 的累计口径一致，确保文字不超卡底）
+  const bodyY = box.y + CARD_PAD + Math.max(1, titleLineCount) * tokens.keyFindingSize * LINE_HEIGHT + TITLE_BODY_GAP;
+  const elements = [{ ...base(id, "rectangle", box, tokens), backgroundColor: fill, strokeColor: stroke, strokeWidth: node.emphasis === "high" ? tokens.strokeWidth + 1 : tokens.strokeWidth, link: link ?? null, customData: { nodeId: node.id } }, text(`${id}-title`, box.x + CARD_PAD, box.y + CARD_PAD, title, tokens.keyFindingSize, stroke, innerWidth, tokens)];
+  if (body) elements.push(text(`${id}-body`, box.x + CARD_PAD, bodyY, body, tokens.evidenceSize, tokens.palette.body, innerWidth, tokens));
   return elements;
 }
 function groupSlot(graph: KnowledgeGraph, nodeId: string, index: number): { group: number; slot: number } {
@@ -64,11 +85,19 @@ function groupSlot(graph: KnowledgeGraph, nodeId: string, index: number): { grou
   if (group >= 0) return { group, slot: graph.groups[group].nodeIds.indexOf(nodeId) };
   return { group: graph.groups.length, slot: index };
 }
+// 列内累计 y：按每张卡的实际高度堆叠，保证任意内容长度下零重叠
+function stackY(cards: { index: number; height: number }[], startY: number, gap: number): Map<number, number> {
+  const ys = new Map<number, number>();
+  let y = startY;
+  for (const cardInfo of cards) { ys.set(cardInfo.index, y); y += cardInfo.height + gap; }
+  return ys;
+}
 function positions(graph: KnowledgeGraph, layout: LayoutKind, tokens: ReturnType<typeof presentationTokens>): Box[] {
   // 展示上限与综合目标对齐（6-12 节点可读且不凑数）；超过的节点由 pruneFillerNodes 先行裁剪
   const nodes = graph.nodes.slice(0, 12);
   const scale = tokens.cardScale;
-  const width = CARD_W * scale, height = CARD_H * scale, gap = 80 * tokens.spacing;
+  const width = CARD_W * scale, gap = 80 * tokens.spacing;
+  const heightOf = (node: KnowledgeNode) => cardHeight(node, width, tokens);
   if (layout === "debate-grid") {
     // 左右对立布局：按分组阵营分侧（组0=左、组1=右、其余组=中轴下方共识区）
     const left: number[] = [], right: number[] = [], center: number[] = [];
@@ -82,45 +111,106 @@ function positions(graph: KnowledgeGraph, layout: LayoutKind, tokens: ReturnType
     const colW = width + 60 * tokens.spacing;
     const leftX = 80, rightX = 80 + colW * 2 + 120; // 中间留 120 分隔带
     const boxes: Box[] = [];
-    left.forEach((idx, k) => { boxes[idx] = { x: leftX, y: 230 + k * (height + gap), width, height }; });
-    right.forEach((idx, k) => { boxes[idx] = { x: rightX, y: 230 + k * (height + gap), width, height }; });
+    const leftYs = stackY(left.map((i) => ({ index: i, height: heightOf(nodes[i]) })), 230, gap);
+    const rightYs = stackY(right.map((i) => ({ index: i, height: heightOf(nodes[i]) })), 230, gap);
+    left.forEach((idx) => { boxes[idx] = { x: leftX, y: leftYs.get(idx)!, width, height: heightOf(nodes[idx]) }; });
+    right.forEach((idx) => { boxes[idx] = { x: rightX, y: rightYs.get(idx)!, width, height: heightOf(nodes[idx]) }; });
     // 共识/无分组节点：严格放在左右阵营列下方，两列铺开（构造性防重叠，不与侧列冲突）
-    const sideBottom = 230 + Math.max(left.length, right.length, 1) * (height + gap);
-    center.forEach((idx, k) => { boxes[idx] = { x: leftX + (k % 2) * colW, y: sideBottom + Math.floor(k / 2) * (height + gap), width, height }; });
+    const sideBottom = Math.max(
+      left.length ? Math.max(...left.map((idx) => boxes[idx].y + boxes[idx].height)) : 230,
+      right.length ? Math.max(...right.map((idx) => boxes[idx].y + boxes[idx].height)) : 230,
+    ) + gap;
+    const centerCols: [number[], number[]] = [[], []];
+    center.forEach((idx, k) => centerCols[k % 2].push(idx));
+    centerCols.forEach((col, colIdx) => {
+      const ys = stackY(col.map((i) => ({ index: i, height: heightOf(nodes[i]) })), sideBottom, gap);
+      col.forEach((idx) => { boxes[idx] = { x: leftX + colIdx * colW, y: ys.get(idx)!, width, height: heightOf(nodes[idx]) }; });
+    });
     return boxes;
   }
   if (layout === "radial-map") {
     // 半径按卡片弧长贴合计算：周长需容纳 n 张卡（每张占 width+gap 弧长），避免巨圈
+    // 高度用每张卡的实际高度，保证圆上相邻卡不重叠
+    const maxHeight = Math.max(...nodes.map(heightOf), CARD_H * scale);
     const circumferenceNeeded = nodes.length * (width + gap);
     const radius = Math.max(420, Math.ceil(circumferenceNeeded / (2 * Math.PI)) + width / 2);
-    const cx = radius + width / 2 + 60, cy = radius + height / 2 + 60;
-    return nodes.map((_, i) => { const angle = -Math.PI / 2 + Math.PI * 2 * i / Math.max(nodes.length, 1); return { x: cx + Math.cos(angle) * radius - width / 2, y: cy + Math.sin(angle) * radius - height / 2, width, height }; });
+    const cx = radius + width / 2 + 60, cy = radius + maxHeight / 2 + 60;
+    return nodes.map((node, i) => {
+      const height = heightOf(node);
+      const angle = -Math.PI / 2 + Math.PI * 2 * i / Math.max(nodes.length, 1);
+      return { x: cx + Math.cos(angle) * radius - width / 2, y: cy + Math.sin(angle) * radius - height / 2, width, height };
+    });
   }
-  if (layout === "timeline") return nodes.map((_, i) => ({ x: 60 + i * (width + gap), y: 220 + (i % 2) * (height + gap), width, height }));
-  if (layout === "swimlane-roadmap") return nodes.map((node, i) => { const slot = groupSlot(graph, node.id, i); return { x: 60 + slot.group * (width + 100 * tokens.spacing), y: 210 + slot.slot * (height + gap), width, height }; });
-  if (layout === "cluster-board") return nodes.map((node, i) => { const slot = groupSlot(graph, node.id, i); return { x: 80 + slot.group * (width + 150 * tokens.spacing), y: 210 + slot.slot * (height + gap), width, height }; });
+  if (layout === "timeline") {
+    // 时间线：奇偶两行交错，第二行从第一行最大卡高之下起排，防止动态高度后重叠
+    const row0 = nodes.map((_, i) => i).filter((i) => i % 2 === 0);
+    const row0Max = row0.length ? Math.max(...row0.map((i) => heightOf(nodes[i]))) : CARD_H * scale;
+    return nodes.map((node, i) => ({ x: 60 + i * (width + gap), y: i % 2 === 0 ? 220 : 220 + row0Max + gap, width, height: heightOf(node) }));
+  }
+  if (layout === "swimlane-roadmap") {
+    const lanes = new Map<number, number[]>();
+    const slots = nodes.map((node, i) => {
+      const slot = groupSlot(graph, node.id, i);
+      if (!lanes.has(slot.group)) lanes.set(slot.group, []);
+      lanes.get(slot.group)!.push(i);
+      return slot;
+    });
+    const laneYs = new Map<number, Map<number, number>>();
+    for (const [group, members] of lanes) laneYs.set(group, stackY(members.map((i) => ({ index: i, height: heightOf(nodes[i]) })), 210, gap));
+    return nodes.map((node, i) => ({ x: 60 + slots[i].group * (width + 100 * tokens.spacing), y: laneYs.get(slots[i].group)!.get(i)!, width, height: heightOf(node) }));
+  }
+  if (layout === "cluster-board") {
+    const clusters = new Map<number, number[]>();
+    const slots = nodes.map((node, i) => {
+      const slot = groupSlot(graph, node.id, i);
+      if (!clusters.has(slot.group)) clusters.set(slot.group, []);
+      clusters.get(slot.group)!.push(i);
+      return slot;
+    });
+    const clusterYs = new Map<number, Map<number, number>>();
+    for (const [group, members] of clusters) clusterYs.set(group, stackY(members.map((i) => ({ index: i, height: heightOf(nodes[i]) })), 210, gap));
+    return nodes.map((node, i) => ({ x: 80 + slots[i].group * (width + 150 * tokens.spacing), y: clusterYs.get(slots[i].group)!.get(i)!, width, height: heightOf(node) }));
+  }
   if (layout === "evidence-tree") {
     if (graph.metadata?.mode === "summary") {
       // 思维导图：中心主题 + 左右对称分支（左侧奇数、右侧偶数交替），紧凑防长图
-      const rows = Math.ceil(nodes.length / 2);
-      const leftCount = Math.ceil(nodes.length / 2), rightCount = Math.floor(nodes.length / 2);
-      return nodes.map((_, i) => {
+      const leftIdx = nodes.map((_, i) => i).filter((i) => i % 2 === 0);
+      const rightIdx = nodes.map((_, i) => i).filter((i) => i % 2 === 1);
+      const colHeight = (members: number[]) => members.reduce((sum, i) => sum + heightOf(nodes[i]), 0) + Math.max(0, members.length - 1) * gap;
+      const maxCol = Math.max(colHeight(leftIdx), colHeight(rightIdx));
+      // 垂直居中：短的一侧整体上移，让中心节点两侧视觉平衡
+      const leftYs = stackY(leftIdx.map((i) => ({ index: i, height: heightOf(nodes[i]) })), 260 + Math.max(0, (maxCol - colHeight(leftIdx)) / 2), gap);
+      const rightYs = stackY(rightIdx.map((i) => ({ index: i, height: heightOf(nodes[i]) })), 260 + Math.max(0, (maxCol - colHeight(rightIdx)) / 2), gap);
+      return nodes.map((node, i) => {
         const isLeft = i % 2 === 0;
-        const k = isLeft ? Math.floor(i / 2) : Math.floor(i / 2);
-        // 垂直居中：短的一侧整体上移，让中心节点两侧视觉平衡
-        const sideCount = isLeft ? leftCount : rightCount;
-        const offset = (rows - sideCount) * (height + gap) / 2;
-        return { x: isLeft ? 60 : width + 620, y: 260 + offset + k * (height + gap), width, height };
+        return { x: isLeft ? 60 : width + 620, y: (isLeft ? leftYs : rightYs).get(i)!, width, height: heightOf(node) };
       });
     }
     // 子节点在 root 右侧双列竖排（root 宽 420）
     const rootRight = 480 + 60;
-    return nodes.map((_, i) => ({ x: rootRight + (i % 2) * (width + 60), y: 210 + Math.floor(i / 2) * (height + 40), width, height }));
+    const cols: [number[], number[]] = [[], []];
+    nodes.forEach((_, i) => cols[i % 2].push(i));
+    const colYs = cols.map((col) => stackY(col.map((i) => ({ index: i, height: heightOf(nodes[i]) })), 210, 40));
+    return nodes.map((node, i) => ({ x: rootRight + (i % 2) * (width + 60), y: colYs[i % 2].get(i)!, width, height: heightOf(node) }));
   }
   // concept-map 默认：有分组用 cluster-board 分簇；无分组用紧凑两列网格（近间距）
   const hasGroups = graph.groups.length > 0;
-  if (hasGroups) return nodes.map((node, i) => { const slot = groupSlot(graph, node.id, i); return { x: 80 + slot.group * (width + 90 * tokens.spacing), y: 210 + slot.slot * (height + 40), width, height }; });
-  return nodes.map((_, i) => ({ x: 80 + (i % 2) * (width + 60), y: 210 + Math.floor(i / 2) * (height + 40), width, height }));
+  if (hasGroups) {
+    const clusters = new Map<number, number[]>();
+    const slots = nodes.map((node, i) => {
+      const slot = groupSlot(graph, node.id, i);
+      if (!clusters.has(slot.group)) clusters.set(slot.group, []);
+      clusters.get(slot.group)!.push(i);
+      return slot;
+    });
+    const clusterYs = new Map<number, Map<number, number>>();
+    for (const [group, members] of clusters) clusterYs.set(group, stackY(members.map((i) => ({ index: i, height: heightOf(nodes[i]) })), 210, 40));
+    return nodes.map((node, i) => ({ x: 80 + slots[i].group * (width + 90 * tokens.spacing), y: clusterYs.get(slots[i].group)!.get(i)!, width, height: heightOf(node) }));
+  }
+  const cols: [number[], number[]] = [[], []];
+  nodes.forEach((_, i) => cols[i % 2].push(i));
+  const colYs = cols.map((col) => stackY(col.map((i) => ({ index: i, height: heightOf(nodes[i]) })), 210, 40));
+  return nodes.map((node, i) => ({ x: 80 + (i % 2) * (width + 60), y: colYs[i % 2].get(i)!, width, height: heightOf(node) }));
 }
 
 // 边锚点按两卡相对位置动态选择，避免连线横穿卡片
@@ -159,9 +249,9 @@ function render(graph: KnowledgeGraph, layout: LayoutKind): SceneElement[] {
     // 思维导图：根节点放在左右两列之间的走廊垂直居中（与 positions() 的 summary 分支坐标对齐）
     const root = mindmap
       ? (() => {
-          const rows = Math.ceil(boxes.length / 2);
-          const step = CARD_H * tokens.cardScale + 80 * tokens.spacing;
-          const colHeight = rows * step - 80 * tokens.spacing;
+          const stepGap = 80 * tokens.spacing;
+          const colContent = boxes.reduce((sum, box) => sum + box.height, 0);
+          const colHeight = Math.max(colContent + Math.max(0, Math.ceil(boxes.length / 2) - 1) * stepGap, 130);
           return { x: CARD_W * tokens.cardScale + 170, y: 260 + Math.max(0, (colHeight - 130) / 2), width: 340, height: 130 };
         })()
       : { x: 60, y: 260, width: 420, height: 130 };

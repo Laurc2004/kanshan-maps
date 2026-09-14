@@ -176,8 +176,17 @@
 - 注意坑：工具回显会把 `apiKey: string` 打码成 `***`，看起来像文件损坏，实际 on-disk 完好，不要被误导去"修"
 - 实施中发现两个真 bug 已修：骨架阶段 parseSkeleton 传空顶层 citations 导致节点引用被 validateCitations 清空（改为从节点 citation id 推导）；pruneFillerNodes 保底逻辑写反（cited.length===nodes.length 时反而去裁）
 
+### Phase 14: 六项样式修复（子代理并行）— status: in_progress
+- [ ] S1 收藏夹文章样式对齐知乎回答卡片（ProfileCenter favorites tab：头像/作者/标题/摘要/查看原文，同 SourcesPanel 结构）
+- [ ] S2 个人中心入口核查（已有 ProfileCenter+顶栏入口；确认入口可见性，不明显则强化）
+- [ ] S3 换颜色只变色调不变版式：changePalette 不再全量重排（保留旧元素坐标只换色），修 applyPalette/renderGraph 路径
+- [ ] S4 画板控件（配色+保存图片）移到画板右下角；notice 提示不再挤压按钮导致文字堆叠
+- [ ] S5 卡片标题/描述完整展示：wrap maxLines 增大（标题 3、描述 6）或按内容增高，卡高同步动态算
+- [ ] S6 cluster-board（文章摘要）中央文字溢出卡片框修复（宽度计算或内边距）
+- [ ] S7 验证：全量测试/lint/build + E2E 视觉检查 + 部署
+（S1/S2 → ProfileCenter.tsx+page.tsx 左栏；S3/S4 → page.tsx+BoardControls.tsx；S5/S6 → harness/layouts.ts）
+
 ### Phase 13: 路线图页面空白根修 + 智能编排布局紧凑化 — status: complete
-背景：F8 重试 scrollToContent 没治本，路线图页面仍空白（导出正常）；观点图正常。radial-map 半径公式 max(680, w*ceil(n/2)) 导致 8 节点半径 1280px 的巨圈，concept-map 又默认选 radial-map，多数问题都变围着圈。
 - [x] G1 E2E 复现：legacy「学习路线」模式九宫格全 0%（auto 正常 30%+），无 console 错误 → 逐层排查 scene 渲染器
 - [x] G2 根因修复：roadmapToScene 里 `els.push({ ...headT, x, y })` 展开了 block() 的 {el,height} 而非 .el，产出无 type 非法元素 → Excalidraw 场景校验失败整板空白（导出走包围盒所以下载正常）。改 ...headT.el；全文件 grep 确认仅此一处；回归测试固化（元素必须全部有 type/id），node --test 动态副本法绕过无后缀 import
 - [x] G3 布局紧凑化：radial-map 半径按卡片弧长贴合（周长容纳 n 卡）；concept-map 默认 cluster-board 分簇/紧凑两列；evidence-tree 补右侧双列显式分支；planner concept-map→cluster-board；synthesis prompt 所有任务强制 2-4 主题分组+标题直接回答问题

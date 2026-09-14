@@ -556,9 +556,32 @@ export default function Home() {
   }, [persistBoard, renderGraph]);
   const changePalette = useCallback((palette: PaletteId) => {
     if (!graph) return;
-    try { const next = applyPalette(graph, palette); setGraph(next); graphRef.current = next; renderGraph(next, undefined, graphMode); persistBoard(next, graphMode, next.title, items); }
+    try {
+      const next = applyPalette(graph, palette);
+      setGraph(next);
+      graphRef.current = next;
+      // S3：换配色不重排版式 —— 用同一布局器重新生成元素，但按元素 id 把旧场景坐标映射回去
+      // （同 applyAgentGraph 的局部更新手法），只换色/样式，保留用户手动排版
+      (async () => {
+        const layout = await import("@/lib/excalidraw-layout");
+        const fresh = (
+          graphMode === "roadmap" && "question" in next
+            ? layout.graphToScene(next as unknown as ViewpointGraph, followeesRef.current)
+            : layout.adaptiveGraphToScene(next, followeesRef.current)
+        ) as { id?: string; x?: number; y?: number }[];
+        const old = (apiRef.current?.getSceneElements() ?? []) as unknown as { id?: string; x?: number; y?: number }[];
+        const oldPos = new Map(old.map((el) => [el.id, { x: el.x, y: el.y }]));
+        const merged = fresh.map((el) => {
+          const pos = el.id ? oldPos.get(el.id) : undefined;
+          return pos ? { ...el, x: pos.x, y: pos.y } : el;
+        });
+        apiRef.current?.updateScene({ elements: merged as never });
+      })();
+      const boardTitle = "question" in next ? String(next.question) : "nodes" in next ? String(next.title) : String((next as unknown as { topic?: string; title?: string }).topic ?? "看山图");
+      persistBoard(next, graphMode, boardTitle, items);
+    }
     catch (cause) { setError(cause instanceof Error ? cause.message : "配色切换失败"); }
-  }, [graph, graphMode, items, persistBoard, renderGraph]);
+  }, [graph, graphMode, items, persistBoard]);
 
   // 热榜点击：弹窗确认后生成
   const pickHot = useCallback((title: string) => {
@@ -685,22 +708,26 @@ export default function Home() {
                 <path d="M8 10h.01M12 10h.01M16 10h.01M21 12a9 9 0 01-9 9 9 9 0 01-4-.8L3 21l1-3.2A9 9 0 1121 12z" />
               </svg>
             </button>
-            {me.loggedIn && (
-              <button
-                onClick={() => setShowProfile((v) => !v)}
-                title="个人中心（收藏夹 / 本机地图 / 关注）"
-                className={`rounded-full border p-2 transition ${
-                  showProfile
-                    ? "border-[#0066ff]/30 bg-[#f0f5ff] text-[#0066ff]"
-                    : "border-gray-200 text-gray-400 hover:border-[#0066ff]/30 hover:text-[#0066ff]"
-                }`}
-              >
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" />
-                  <circle cx="12" cy="7" r="4" />
-                </svg>
-              </button>
-            )}
+            <button
+              onClick={() => {
+                if (!me.loggedIn) {
+                  window.location.href = "/api/auth/login";
+                  return;
+                }
+                setShowProfile((v) => !v);
+              }}
+              title={me.loggedIn ? "个人中心（收藏夹 / 本机地图 / 关注）" : "个人中心（知乎登录后可用收藏夹 / 关注）"}
+              className={`rounded-full border p-2 transition ${
+                showProfile
+                  ? "border-[#0066ff]/30 bg-[#f0f5ff] text-[#0066ff]"
+                  : "border-gray-200 text-gray-400 hover:border-[#0066ff]/30 hover:text-[#0066ff]"
+              }`}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" />
+                <circle cx="12" cy="7" r="4" />
+              </svg>
+            </button>
             <button
               onClick={() => setPendingClear(true)}
               disabled={loading || !graph}
@@ -940,9 +967,6 @@ export default function Home() {
                 viewModeEnabled={false}
                 langCode="zh-CN"
                 theme="light"
-                renderTopRightUI={() =>
-                  graph ? <BoardControls graph={graph} busy={loading} makePng={makePng} onPaletteChange={changePalette} /> : null
-                }
                 onPointerDown={(_tool, pointerDownState) => {
                   // 卡片链接点击：hit 元素带 link 时新标签打开原文
                   const hit = pointerDownState.hit.element;
@@ -978,6 +1002,12 @@ export default function Home() {
                       正在抓取知乎高赞回答，提炼各方立场与论据
                     </p>
                   </div>
+                </div>
+              )}
+              {/* S4：画板控件悬浮右下角（配色 + 保存图片），不挤占 Excalidraw 原生 UI */}
+              {graph && (
+                <div className="absolute bottom-3 right-3 z-30">
+                  <BoardControls graph={graph} busy={loading} makePng={makePng} onPaletteChange={changePalette} />
                 </div>
               )}
               {/* 画板来源索引：链接只在非编辑手势下打开 */}

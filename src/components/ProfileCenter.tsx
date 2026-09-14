@@ -124,13 +124,55 @@ export default function ProfileCenter({ name, boards, favlists, followees, busy,
                   <p className="px-1 py-4 text-center text-xs text-gray-500">正在读取收藏内容…</p>
                 ) : activeFavlist ? (
                   <>
-                    <div className="thin-scroll max-h-72 space-y-1 overflow-y-auto rounded-lg bg-[#fafaf7] p-1.5">
-                      {favlistItems.map((item) => (
-                        <label key={item.ContentID} className="flex cursor-pointer items-start gap-2 rounded-md px-1.5 py-1.5 hover:bg-white">
-                          <input type="checkbox" checked={selectedIds.has(item.ContentID)} onChange={() => onToggleItem(item.ContentID)} className="mt-0.5 accent-[#0066ff]" />
-                          <span className="line-clamp-2 text-xs leading-4 text-gray-600">{item.Title}</span>
-                        </label>
-                      ))}
+                    <div className="thin-scroll max-h-72 overflow-y-auto">
+                      {favlistItems.map((item, i) => {
+                        const checked = selectedIds.has(item.ContentID);
+                        return (
+                          <div
+                            key={item.ContentID}
+                            className={`group mb-2 rounded-lg border p-2.5 transition ${
+                              checked ? "border-[#0066ff]/60 bg-[#f0f5ff]" : "border-[#eee] hover:border-[#0066ff]/40"
+                            }`}
+                          >
+                            <div className="mb-1 flex items-center gap-2">
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={() => onToggleItem(item.ContentID)}
+                                className="h-3.5 w-3.5 shrink-0 accent-[#0066ff]"
+                                aria-label="选择这篇内容"
+                              />
+                              {item.AuthorAvatar ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img src={item.AuthorAvatar} alt="" className="h-5 w-5 rounded-full object-cover" />
+                              ) : (
+                                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[#f0f5ff] text-[10px] font-medium text-[#0066ff]">
+                                  {i + 1}
+                                </span>
+                              )}
+                              <span className="truncate text-xs font-medium text-[#1a1a1a]">{item.AuthorName}</span>
+                              <span className="ml-auto shrink-0 text-[10px] text-gray-400">▲ {item.VoteUpCount}</span>
+                            </div>
+                            <button onClick={() => onToggleItem(item.ContentID)} className="block w-full text-left" title="点标题也可勾选">
+                              <p className="mb-1 line-clamp-2 text-xs font-medium leading-5 text-[#1a1a1a] group-hover:text-[#0066ff]">
+                                {item.Title}
+                              </p>
+                            </button>
+                            <p className="line-clamp-2 text-[11px] leading-4 text-gray-500">{item.ContentText}</p>
+                            <div className="mt-1 flex items-center gap-2">
+                              <a
+                                href={item.Url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-[10px] text-[#0066ff]/70 hover:text-[#0066ff]"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                查看原文
+                              </a>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                     <div className="mt-3 flex items-center justify-between gap-2">
                       <span className="shrink-0 text-[11px] text-gray-500">已选 {selectedIds.size} 篇</span>

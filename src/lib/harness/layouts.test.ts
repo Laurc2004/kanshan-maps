@@ -106,6 +106,32 @@ test("evidence-tree connects its root to every child and places children to the 
   for (const child of children) assert.ok(scene.some((element) => element.type === "arrow" && element.startNodeId === "evidence-root" && element.endNodeId === child.customData.nodeId));
 });
 
+test("cards grow to fit 3-line titles and 6-line bodies without text escaping the card (S5)", () => {
+  for (const layout of layouts) {
+    const value = graph(layout);
+    // 长标题（需要 3 行）+ 长描述（需要 6 行），在 spacious 密度 + 2 倍字级下仍须完整容纳
+    value.nodes = value.nodes.map((node, i) => ({
+      ...node,
+      label: `这是一个非常长的观点标题用于验证三行折行展示效果第${i + 1}号立场观点`,
+      description: "这是一段刻意拉长的正文描述，用来验证描述文字在六行以内能够完整展示在卡片内部而不会溢出卡片边界，包含足够的汉字与 English words 混合内容以确保折行逻辑被真实触发。",
+    }));
+    value.presentation = { ...value.presentation, density: "spacious", hierarchy: { title: 2, keyFinding: 2, evidence: 2 } };
+    const scene = knowledgeGraphToScene(value);
+    const byId = new Map(scene.map((element) => [element.id, element]));
+    for (const element of scene.filter((e) => e.type === "text")) {
+      const owner = byId.get((element.id as string).replace(/-(title|body)$/, ""));
+      if (owner) {
+        assert.ok((element.x as number) + (element.width as number) <= (owner.x as number) + (owner.width as number), `${layout}: text escapes card width ${element.id}`);
+        assert.ok((element.y as number) + (element.height as number) <= (owner.y as number) + (owner.height as number), `${layout}: text escapes card height ${element.id}`);
+      }
+    }
+    assert.deepEqual(substantiveCollisions(scene), [], `${layout}: cards overlap with tall content`);
+    // 长内容下卡高必须真的被撑高（超过最小卡高）
+    const rects = scene.filter((e) => e.type === "rectangle" && String(e.id).startsWith("node-")) as Array<{ height: number }>;
+    assert.ok(rects.some((r) => r.height > 280), `${layout}: card height should grow beyond minimum for long content`);
+  }
+});
+
 test("debate-grid places opposing groups on left/right with edge rate-limit", () => {
   const value = graph("debate-grid");
   const scene = knowledgeGraphToScene(value);
