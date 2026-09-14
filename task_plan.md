@@ -264,6 +264,54 @@
 - [x] 18.6 Share: helper covers cited copy, safe filename, cancellation classification, clipboard/download/watermark primitives; panel integration present.
 - [x] 18.7 Release: full Node runner, typecheck, lint, build, diff check, local production HTTP/API smoke, Playwright desktop/mobile UI smoke, commit/push, Vercel production deploy and public readback.
 
+## Phase 24: 生成图/修改图样式重设计（Excalidraw 最佳实践）— status: in_progress
+背景：用户反馈看山助手修改图与生成图仍有样式不美观问题，要求按 Excalidraw 最佳实践重新设计。
+
+### 已确认设计决策
+- 改动收敛在统一渲染器 harness/layouts.ts + presentation.ts；不改图数据结构、不改 Agent 协议。
+- 保留三个用户指定版式的骨架（debate-grid 2×2+胶囊 / swimlane-roadmap 泳道 / summary 思维导图），只重做视觉细节。
+- 评审链路：scripts/visual-probe.ts（元素→自绘 SVG→rsvg-convert PNG）+ vision 子代理评审，迭代到满意后再动代码。
+
+### 任务
+- [x] T1 基线评审：三种图各出一张 PNG，收集最影响美观的问题清单（7 项，记入 findings.md：最小卡高 280 导致大面积空白/胶囊文字截断/层级对比弱/连线全是直线/页眉折行难看/泳道高矮悬殊）
+- [x] T2 卡片组件重设计：CARD_H 280→132 内容主导、PAD 20→18、标题 3 行→2 行、标题色 stroke→palette.title 深色提升层级、标题-正文间距 16→10
+- [x] T3 箭头/连线重设计：arrow() 从 2 点直线改 3 点贝塞尔（bend 0.06）+ 颜色统一 palette.muted；debate 汇聚线保持 curveArrow 0.12
+- [x] T4 标题/页眉排版：header 标题宽 420→900、优先单行（避免第二行一两个字）、summary 位置随行数动态
+- [ ] T5 配色微调：本轮 palette 未改（zhihu-blue 四色 fills/strokes 本身协调，accent 黄与正文区分度够），仅卡片标题色改 palette.title
+- [x] T6 各版式特有问题：debate 胶囊宽度自适应 320~520、文字 3 行完整显示不截断 + 完整居中；mindmap 根容器按行数椭圆/圆角矩形切换、宽 200~380 自适应、3 行完整显示；swimlane 泳道高度对齐最高一条
+- [x] T7 回归：layouts 20/20、全量 165/165、tsc 0 错、lint 0 error、build 过；E2E 真实生成断言（6 卡 h=132、胶囊 320×72 完整未截断且居中、标题单行、箭头全 3 点、0 pageerror）全 PASS
+- [ ] T8 提交推送 + 生产验证
+
+## Phase 25: 样式重设计第 2 轮（debate 箭头重叠/共识长卡/页眉居中完整）— status: complete
+背景：用户对 Phase 24 结果验收不通过，提出 3 项：
+①观点对照汇聚箭头重叠压卡、单一黑色难看、结构没有逻辑性（左右对立没体现）
+②共识应放在最下面、做成一张通栏长卡（不是多张小卡竖排）
+③所有图顶部标题/描述不居中、文字多了被截断——要么 AI 缩短要么样式自适应
+
+### 设计决策
+- debate-grid 左右对立版式：组0=左列、组1=右列、列头立场标签、卡片→胶囊箭头按列换色（不再黑色）
+- 箭头走线：新增 curveArrow3 显式控制点 3 点贝塞尔；起点取卡内侧边缘中点、控制点紧贴起点正上方（x 不变），弧线贴列间隙走廊垂直上升到顶再水平汇入胶囊同侧 1/4 处——贝塞尔头段切线垂直向上，全程不与本列任何卡相交（数学验证 + E2E 贝塞尔轨迹逐段采样断言零压卡）；单列特例（AI 只产 1 组）统一走右缘走廊、终点甩到卡右缘外侧 40px
+- 「结构没有逻辑性」根因：compat.ts viewpointToKnowledgeGraph 把所有观点塞同一个 group="viewpoints"（单组无对立）→ 改 stanceGroup 奇偶交错分 stance-1/stance-2 两组（观点按支持度排序，交错即对立），knowledgeGraphToViewpoint 反转兼容 stance-* 前缀
+- 共识合并渲染：底部通栏长卡（debate-consensus 横幅），多条共识编号横排，胶囊→共识一条绿色连线
+- header 标题/描述居中（textAlign center、文本框中心对齐整图中心 x=590）；标题 32→28、宽 1100、最多 3 行完整显示不截断——「文字截断」用样式自适应，不动 Agent 提示词
+- E2E 断言：贝塞尔轨迹逐段采样不与任何卡相交、箭头颜色 ≥2 色、共识通栏单卡、标题居中无 … 截断
+
+### 任务
+- [x] T1 debate-grid 按组对立分列 + 列头标签 + 箭头按列换色 + 列内侧走廊走线零压卡
+- [x] T2 共识通栏长卡合并渲染
+- [x] T3 header 居中 + 完整显示（28px/1100 宽/3 行）
+- [x] T4 compat 观点分两组（stance-1/stance-2）——结构逻辑性的数据层修复
+- [x] T5 测试断言同步 + 全量门 166/166 + E2E 真实生成 2 组对立/箭头零压卡/页眉居中全 PASS
+- [ ] T6 用户验收后提交部署
+
+## Phase 24: 看山助手对话与图绑定 — status: complete
+背景：用户反馈 生成新图/切换画板后，看山助手上一张图的对话还留在面板里；对话数据应与画板绑定，换图即换会话。
+
+- [x] T1 新增 src/lib/agent-chat-store.ts：按 boardSession 存取 ChatMsg[]（sessionStorage，键含会话 id）+ historyFromMessages 重建 /api/agent history（≤8 条），损坏数据容错
+- [x] T2 page.tsx 引入 boardSession（state+ref，ref 经 effect 同步过 lint 的 react-hooks 检查）：generate 开始 / openSavedBoard / clearBoard 各起新会话；BoardCache 增 sessionId，重启恢复时沿用 → 对话随画板一起回来
+- [x] T3 AgentPanel 接 sessionId prop：会话切换即重载对应聊天记录（面板收起再展开、刷新页面均不丢）；换图瞬间在途请求的回复按 sentSession 丢弃，不写入新会话；save effect 跳过会话切换间隙避免旧消息写进新 key
+- [x] T4 验证：新增 agent-chat-store.test.ts 5 用例；全量 171 tests（165 pass/0 fail/6 skip）· tsc 0 错 · lint 0 error（6 warnings 为既有）· build 16 路由 · Playwright E2E 三场景（刷新后对话随画板恢复 / 清空画布对话清空 / 新画板会话空不串扰）全 PASS、0 pageerror。generate 新图路径与 openSavedBoard 共用同一 setBoardSession 机制，未单独跑真实生成（需知乎 API 配额）。临时脚本 /tmp/e2e-chat-bind.cjs 验证后删除
+
 ## Phase 23: 摘要中心文字居中 + 看山助手超链接开关 — status: complete
 背景：用户反馈 ①文章摘要中间椭圆里的文字不居中 ②跟看山助手说「去除超链接」却改了内容、始终去不掉。
 

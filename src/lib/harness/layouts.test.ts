@@ -28,7 +28,7 @@ for (const layout of layouts) test(`${layout} produces a valid collision-free Ex
     assert.equal(typeof element.id, "string"); assert.equal(typeof element.x, "number"); assert.equal(typeof element.y, "number");
     assert.equal(typeof element.width, "number"); assert.equal(typeof element.height, "number"); assert.equal(typeof element.seed, "number");
     if (element.type === "text") {
-      assert.ok((element.width as number) <= 420, `over-wide text ${element.id}`);
+      assert.ok((element.width as number) <= 1100, `over-wide text ${element.id}`);
       const ownerId = (element.id as string).replace(/-(title|body)$/, "");
       const owner = byId.get(ownerId);
       if (owner) {
@@ -148,7 +148,8 @@ test("summary mindmap root is vertically centered and branch arrows hit card sid
   const arrows = scene.filter((element) => element.type === "arrow" && element.startNodeId === "evidence-root") as Array<{ x: number; y: number; points: [number, number][]; endNodeId: string }>;
   assert.equal(arrows.length, cards.length);
   for (const a of arrows) {
-    const [startRel, endRel] = a.points;
+    const pts = a.points;
+    const startRel = pts[0], endRel = pts[pts.length - 1];
     const startAbs = { x: a.x + startRel[0], y: a.y + startRel[1] };
     const endAbs = { x: a.x + endRel[0], y: a.y + endRel[1] };
     assert.ok(startAbs.x === root.x || startAbs.x === root.x + root.width, `arrow must leave root side edge, got x=${startAbs.x}`);
@@ -190,13 +191,13 @@ test("linksEnabled=false strips card links but keeps citations", () => {
   assert.ok(restored.some((e) => typeof e.link === "string" && (e.link as string).startsWith("https://")), "links restored when re-enabled");
 });
 
-test("cards grow to fit 3-line titles and 6-line bodies without text escaping the card (S5)", () => {
+test("cards grow to fit 2-line titles and 6-line bodies without text escaping the card (S5/P24)", () => {
   for (const layout of layouts) {
     const value = graph(layout);
-    // 长标题（需要 3 行）+ 长描述（需要 6 行），在 spacious 密度 + 2 倍字级下仍须完整容纳
+    // 长标题（P24 起最多 2 行）+ 长描述（需要 6 行），在 spacious 密度 + 2 倍字级下仍须完整容纳
     value.nodes = value.nodes.map((node, i) => ({
       ...node,
-      label: `这是一个非常长的观点标题用于验证三行折行展示效果第${i + 1}号立场观点`,
+      label: `这是一个非常长的观点标题用于验证多行折行展示效果第${i + 1}号立场观点`,
       description: "这是一段刻意拉长的正文描述，用来验证描述文字在六行以内能够完整展示在卡片内部而不会溢出卡片边界，包含足够的汉字与 English words 混合内容以确保折行逻辑被真实触发。",
     }));
     value.presentation = { ...value.presentation, density: "spacious", hierarchy: { title: 2, keyFinding: 2, evidence: 2 } };
@@ -216,7 +217,7 @@ test("cards grow to fit 3-line titles and 6-line bodies without text escaping th
   }
 });
 
-test("debate-grid renders viewpoint cards in 2×2 grid with central question capsule and consensus row", () => {
+test("debate-grid renders viewpoint cards in group lanes with central question capsule and a single consensus banner card", () => {
   const value = graph("debate-grid");
   // 模拟真实观点图：question 节点 + 观点节点 + 共识节点
   value.nodes = [
@@ -234,14 +235,38 @@ test("debate-grid renders viewpoint cards in 2×2 grid with central question cap
   const capsule = scene.find((e) => e.id === "debate-capsule") as { x: number; y: number; width: number; height: number };
   assert.ok(capsule, "central question capsule must exist");
   const cards = scene.filter((e) => e.type === "rectangle" && String(e.id).startsWith("node-")) as Array<{ id: string; x: number; y: number }>;
-  assert.equal(cards.length, 5, "4 viewpoint cards + 1 consensus card");
+  assert.equal(cards.length, 4, "4 viewpoint cards (consensus node renders as banner, not card)");
   assert.ok(cards.every((c) => c.y > capsule.y), "all cards below capsule");
-  // 观点卡 2 列
-  const vpCards = cards.filter((c) => !c.id.includes("c1"));
-  assert.equal(new Set(vpCards.map((c) => c.x)).size, 2, "viewpoint cards in 2 columns");
+  // 观点卡按组对立分列：g1 一列、g2 一列
+  assert.equal(new Set(cards.map((c) => c.x)).size, 2, "viewpoint cards in 2 group lanes");
   // 每张卡都有指向胶囊的汇聚箭头
   const links = scene.filter((e) => e.type === "arrow" && String(e.id).startsWith("debate-link-"));
-  assert.equal(links.length, 5, "every card links to capsule");
+  assert.equal(links.length, 4, "every viewpoint card links to capsule");
   // 胶囊节点本身不渲染成普通卡
   assert.ok(!cards.some((c) => c.id.includes("question")), "question node must render as capsule, not card");
+  // P25：共识合并成一张通栏长卡（不是多张小卡），且带一条胶囊→共识连线
+  const banner = scene.find((e) => e.id === "debate-consensus") as { x: number; y: number; width: number; height: number };
+  assert.ok(banner, "consensus must render as a single banner card");
+  const gridW = Math.max(...cards.map((c) => c.x)) + 320 - Math.min(...cards.map((c) => c.x));
+  assert.ok(banner.width >= gridW - 1, `banner should span the full grid width (got ${banner.width}, grid ${gridW})`);
+  assert.ok(scene.some((e) => e.id === "debate-consensus-link"), "capsule → consensus link must exist");
+  // P25：汇聚箭头按列换色（不再单一黑色），且立场列头标签存在
+  const colors = new Set(links.map((e) => e.strokeColor));
+  assert.ok(colors.size >= 2, "arrows should be colored per lane, not single black");
+  assert.ok(scene.some((e) => e.id === "debate-stance-0") && scene.some((e) => e.id === "debate-stance-1"), "lane stance labels must exist");
+});
+
+// P25：顶部标题/描述必须居中且完整显示（长标题不截断）
+test("graph header title and summary are centered and never truncated", () => {
+  for (const title of ["短标题", "这是一个相当长的问题标题用来验证标题文字在加宽加行之后能够完整显示不再被省略号截断的长标题"]) {
+    const g: KnowledgeGraph = { ...graph("debate-grid"), title };
+    const scene = knowledgeGraphToScene(g);
+    const t = scene.find((e) => e.id === "graph-title") as { x: number; width: number; textAlign: string; text: string };
+    const s = scene.find((e) => e.id === "graph-summary") as { x: number; width: number; textAlign: string; text: string };
+    assert.equal(t.textAlign, "center");
+    assert.ok(!/…/.test(t.text), `title must not be truncated: "${t.text}"`);
+    assert.ok(Math.abs(t.x + t.width / 2 - 590) <= 1, "title text box must be centered on canvas");
+    assert.equal(s.textAlign, "center");
+    assert.ok(Math.abs(s.x + s.width / 2 - 590) <= 1, "summary text box must be centered on canvas");
+  }
 });

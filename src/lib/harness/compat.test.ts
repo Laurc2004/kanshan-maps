@@ -34,8 +34,12 @@ test("viewpoint roundtrip survives JSON serialization without caps or field loss
     style: "bold" as const,
   };
   const serialized = JSON.parse(JSON.stringify(viewpointToKnowledgeGraph(legacy))) as KnowledgeGraph;
-  assert.equal(serialized.nodes.filter((node) => node.group === "viewpoints").length, 12);
+  // P25：观点按奇偶交错分成 stance-1/stance-2 两个对立组（不再全塞 "viewpoints" 一组）
+  assert.equal(serialized.nodes.filter((node) => node.group?.startsWith("stance-")).length, 12);
+  assert.equal(serialized.nodes.filter((node) => node.group === "stance-1").length, 6);
+  assert.equal(serialized.nodes.filter((node) => node.group === "stance-2").length, 6);
   assert.equal(serialized.nodes.filter((node) => node.group === "consensus").length, 11);
+  // roundtrip：反转后 viewpoints 顺序保持 stance-1,stance-2 交错展开 = 原顺序
   assert.deepEqual(knowledgeGraphToViewpoint(serialized), legacy);
 });
 

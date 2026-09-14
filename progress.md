@@ -1,3 +1,10 @@
+## Session 23 — 2026-09-14（看山助手对话与画板会话绑定）— complete
+- 根因：AgentPanel 的 messages/history 全是组件内 state，不与任何画板标识关联 → 换图/切画板/清空后旧对话残留。
+- 方案：boardSession（每图一会话）贯穿 page → AgentPanel；聊天按会话 id 存 sessionStorage；BOARD_CACHE 增 sessionId，刷新/重启恢复画板时对话跟着回来。
+- 细节：换图瞬间在途 /api/agent 回复按 sentSession 丢弃（防串会话）；save effect 跳过会话切换间隙（防旧消息写进新 key）；ref 同步走 useEffect 过 react-hooks lint。
+- 验证：agent-chat-store.test.ts 5 用例新增；全量 171 tests（165 pass/0 fail/6 skip）；tsc 0 错；lint 0 error（6 warnings 既有）；build 16 路由；Playwright E2E（dev:3005）三场景全 PASS + 0 pageerror（对话随画板恢复 / 清空后清空 / 新会话不串扰）。generate 新图路径未跑真实生成（知乎 API 配额），与 openSavedBoard 共用同一 setBoardSession 机制。
+- 待用户验收后提交。
+
 ## Session 22 — 2026-09-14（摘要椭圆文字居中 + 助手超链接开关）— complete
 - 椭圆文字居中：evidence-root-text 从固定 +30/+35 偏移改为「文字块中心==椭圆中心」+ textAlign center / verticalAlign middle，折行/密度变化不漂。
 - 超链接开关：「去除超链接」原路由进 structure/model 被误当删改内容；新增 set_links 语义变更（metadata.linksEnabled，可逆），LINK_OFF_RE 路由优先级提到删除规则之前；渲染层 nodeLink 读开关（layouts.ts，该文件经并行会话的 renderer 统一重构后已含同名改动，此处为合流）；citations/底部来源索引不动。
@@ -196,6 +203,18 @@
 - 验证：129 tests / 123 pass / 0 fail；lint 0 error；tsc clean；build 通过。
 - 部署：kanshan-maps-ccqrvx628-liurc2004.vercel.app ● READY (Production)
 
+## Session 22 — 2026-09-14（Phase 24: 生成图/修改图样式重设计 Excalidraw 最佳实践）— 待提交
+- 基线评审：visual-probe.ts（新增，元素→自绘 SVG→rsvg PNG）出三种图，几何分析定位 7 项问题；本机 vision_analyze 400（stream 限制）、3 个评审子代理撞同一堵墙超时 1 个，改用 SVG 坐标逐元素核对完成评审
+- 实施（全部在 harness/layouts.ts，图结构/Agent 协议未动）：
+  - 卡片：CARD_H 最小 280→132（内容主导，消灭大面积空白）、PAD 20→18、标题 3 行→2 行、标题色 stroke→palette.title 提升层级、标题-正文间距 16→10
+  - 箭头：arrow() 2 点直线→3 点贝塞尔（bend 0.06，roundness type 2）+ 颜色统一 palette.muted；debate 汇聚线保持 curveArrow 0.12
+  - 页眉：标题宽 420→900 优先单行（修「第二行只剩一两个字」），summary 位置随行数动态
+  - debate 胶囊：宽自适应 320~520（按问题文字宽）、文字 3 行完整显示不截断、fixedWidth + 双居中
+  - mindmap 根容器：宽 200~380 自适应、3 行完整显示、单行椭圆/多行圆角矩形切换
+  - swimlane：泳道高度对齐最高一条（等高彩色列，不再 1080/720/360 高矮悬殊）
+- 验证：layouts 20/20（修一处断言：箭头 points 3 点解构）、全量 165 tests 0 fail、tsc 0 错、lint 0 error、build 过；E2E 真实生成（dev 3005）：28 元素、6 卡 h=132、胶囊 320×72 文字完整未截断且居中、标题单行、6 箭头全 3 点、0 pageerror，7 项断言全 PASS
+- 待办：提交推送 + 生产部署验证
+
 ## Session 21 — 2026-09-14（Phase 22: 摘要思维导图几何根修 + Agent 版式切换）— complete
 - 用户反馈：摘要思维导图箭头重叠/压卡、中心卡不垂直居中；看山助手改不了结构/样式
 - 根因：①思维导图分支箭头走通用 anchors()，上下错位卡被判垂直连线从卡顶穿入 ②根 y 用近似公式与 positions() 口径不一致 ③「换成思维导图」只重设 presentation.layout（摘要图本来就是 evidence-tree，无操作），没翻转 metadata.mode=summary ④geometryChanged 没监听 metadata.mode，版式切换被局部渲染吞掉
@@ -245,3 +264,12 @@
 - 收藏夹操作区从列表尾部改为面板固定底栏（shrink-0 border-t，不随列表滚动），单个「生成 · 已选 N 篇」按钮
 - 点击弹 GenerateModeDialog 三选一：观点对照 / 学习路线 / 文章摘要（新支持 compare 模式从收藏夹生成）
 - 验证：tsc/lint/build 绿；E2E 主流程生成无回归（登录态交互由编译保证）；1aed96c 已部署生产
+
+## Session 23 — 2026-09-14（Phase 25: 生成图样式第 2 轮）— 待验收
+- 用户验收 Phase 24 不通过：①汇聚箭头重叠压卡/单一黑色/结构乱 ②共识要做成最下面一张通栏长卡 ③所有图页眉标题描述不居中且截断
+- layouts.ts：新增 curveArrow3 显式控制点 3 点贝塞尔；debate 箭头起点取卡内侧边缘中点、控制点紧贴正上方，弧线贴列间隙走廊垂直上升到顶再汇入胶囊同侧 1/4 处；按列换色（蓝/橙）；单列特例统一走右缘+终点甩卡右缘外 40px（E2E 贝塞尔轨迹逐段采样断言零压卡）
+- compat.ts：viewpointToKnowledgeGraph 不再把所有观点塞同一 group——stanceGroup 奇偶交错分 stance-1/stance-2 两组形成左右对立（这是「结构没有逻辑性」的数据层根因）；knowledgeGraphToViewpoint 反转兼容 stance-* 前缀
+- layouts.ts：共识合并渲染成底部通栏长卡（多条编号横排）+ 胶囊→共识一条绿色连线；立场列头标签（debate-stance-N）
+- layouts.ts header：标题/描述居中（textAlign center、文本框中心对齐 x=590）、28px/1100 宽/3 行完整显示不截断
+- 验证：全量 166/166（layouts 21 + compat roundtrip 适配新分组）/ tsc 0 / lint 0 error / E2E 真实生成 2 组对立、箭头零压卡、页眉居中完整全 PASS
+- 待办：用户验收 → 提交推送 + 生产部署

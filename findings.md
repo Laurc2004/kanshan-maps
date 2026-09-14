@@ -55,6 +55,24 @@
 - 故事/知识 列表+详情：`https://api.zhihu.com/km-indep-home/hackathon/v2/{story|knowledge}/{list|<work_id>}`
 - 知识接口可用于"学习路线图"场景的补充素材（P1）
 
+## 追加发现：Phase 24 基线评审（生成图样式问题清单，经元素几何分析确认）
+
+统一渲染器三种图的基线几何分析（scripts/visual-probe.ts 出 SVG 逐元素核对）发现以下影响美观的问题，按严重度排序：
+
+1. **卡片内容稀疏、大量空白**：card() 最小高 280px，但典型内容（1 行标题+2 行正文）只占 ~105px，卡内空白 ~175px。三张图所有卡全顶着 280px 最小高，图变得又高又空（compare 图 880×1670 里超过一半是空白）。卡高应由内容主导，最小高压到 ~130px。
+2. **胶囊/椭圆文字被截断**：debate 胶囊 qW=300 固定、文字只给 2 行（长问题标题被「…」截断），而页面大标题反而给 420 宽 2 行 32px。中心问题才是主角，应该完整显示。mindmap 椭圆同样 280 宽 2 行截断。
+3. **层级对比不足**：卡标题 20px vs 正文 14px，行高都是 1.25，标题与正文间还有 16px 间距，视觉上标题不突出。正文 #343a40 与标题（彩色 stroke）对比弱。
+4. **连线全是直线**（arrow() 2 点）：evidence-tree 思维导图 6 条分支全是直线从椭圆侧缘水平发出，生硬；debate 汇聚线用了曲线但 bend 方向只对左/右区分，远卡（底部共识）连线过长穿过整个画布。
+5. **页眉标题折行难看**：header() 标题宽 420 折 2 行，长标题第二行只有一两个字（"…的四种立场"），应该加宽到与图内容同宽或至少 600。
+6. **泳道框高低悬殊**：swimlane 4 条泳道高 1080/720/720/360，视觉不平衡（节点数不均时无解，但可以让泳道高度对齐到最高泳道，或者接受现状）。
+7. 注意坑：本机 vision_analyze 400（provider 要 stream=true），子代理也撞墙超时——视觉评审走「元素几何分析」代替，SVG 坐标逐元素核对即可发现版式问题。
+
+### 修复落地（同 Phase）
+- CARD_H 最小值 280→132；TITLE_MAX_LINES 3→2；标题色 stroke→palette.title；arrow() 改 3 点贝塞尔 bend 0.06 + palette.muted；header 标题宽 900 优先单行。
+- debate 胶囊宽自适应 320~520、3 行完整显示、文字完整居中（fixedWidth + 双居中，同 evidence-root-text 手法）。
+- mindmap 根容器宽 200~380 自适应、3 行、单行椭圆/多行圆角矩形；swimlane 泳道高度对齐最高一条（先建 laneBoxes 再统一 height = maxLaneBottom - y）。
+- 测试断言里箭头 points 解构要从 [start, end] 改为首尾点（3 点贝塞尔会让 points.length===3）。
+
 ## 追加发现：Phase 23（椭圆文字居中 + 超链接开关）
 - Excalidraw 自由文本元素要靠「文字块中心 == 容器中心」手动对齐；固定偏移量在折行数/字号变化时必偏。容器内居中还需 textAlign:center + verticalAlign:middle。
 - 卡片超链接是渲染属性（layouts.ts nodeLink），不是图内容：用户说「去除链接」绝不能删节点/改描述。开关记 metadata.linksEnabled，citations 保留，底部来源索引不受影响。
