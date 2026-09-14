@@ -7,6 +7,42 @@ import type { SearchResultItem } from "@/lib/zhihu";
 type Favlist = { urlToken: number; title: string; description: string };
 type Tab = "maps" | "favorites";
 
+/** 底部生成弹窗：三种模式选择 */
+function GenerateModeDialog({ open, busy, onPick, onClose }: { open: boolean; busy: boolean; onPick: (mode: "compare" | "roadmap" | "summary") => void; onClose: () => void }) {
+  if (!open) return null;
+  const modes: { id: "compare" | "roadmap" | "summary"; label: string; desc: string; icon: string }[] = [
+    { id: "compare", label: "观点对照", desc: "各方立场与共识的左右对照图", icon: "M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" },
+    { id: "roadmap", label: "学习路线", desc: "入门 → 进阶 → 避坑的路径图", icon: "M9 20l-5.5-2.5v-5L9 10l5.5 2.5v5L9 20zM9 10V4.5L14.5 2 20 4.5v5.5l-5.5 2.5" },
+    { id: "summary", label: "文章摘要", desc: "中心主题 + 要点分支", icon: "M12 3v18M3 8h6M15 8h6M3 16h6M15 16h6" },
+  ];
+  return (
+    <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/25 p-4" role="dialog" aria-label="选择生成模式" onClick={onClose}>
+      <div className="w-full max-w-64 rounded-2xl border border-[#e8e8e3] bg-white p-3 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <p className="mb-2 px-1 text-xs font-semibold text-[#1a1a1a]">生成哪种图？</p>
+        <div className="flex flex-col gap-1.5">
+          {modes.map((m) => (
+            <button
+              key={m.id}
+              disabled={busy}
+              onClick={() => onPick(m.id)}
+              className="flex items-start gap-2.5 rounded-xl border border-[#eee] px-3 py-2.5 text-left transition hover:border-[#0066ff]/50 hover:bg-[#f7faff] disabled:opacity-50"
+            >
+              <svg className="mt-0.5 h-4 w-4 shrink-0 text-[#0066ff]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+                <path d={m.icon} />
+              </svg>
+              <span className="min-w-0">
+                <span className="block text-xs font-medium text-[#1a1a1a]">{m.label}</span>
+                <span className="block text-[10px] leading-4 text-gray-400">{m.desc}</span>
+              </span>
+            </button>
+          ))}
+        </div>
+        <button onClick={onClose} className="mt-2 w-full rounded-full py-1.5 text-[11px] text-gray-400 transition hover:text-gray-600">取消</button>
+      </div>
+    </div>
+  );
+}
+
 function EmptyState({ icon, hint, sub }: { icon: string; hint: string; sub?: string }) {
   return (
     <div className="flex flex-col items-center gap-2 px-2 py-10 text-center">
@@ -37,9 +73,10 @@ export default function ProfileCenter({ name, boards, favlists, busy, favlistLoa
   onDeleteBoard: (id: string) => void;
   onOpenFavlist: (favlist: Favlist) => void;
   onToggleItem: (id: string) => void;
-  onGenerateFavlist: (mode: "roadmap" | "summary") => void;
+  onGenerateFavlist: (mode: "compare" | "roadmap" | "summary") => void;
 }) {
   const [tab, setTab] = useState<Tab>("maps");
+  const [modeDialogOpen, setModeDialogOpen] = useState(false);
   const tabs: { id: Tab; label: string; count?: number }[] = [
     { id: "maps", label: "地图", count: boards.length },
     { id: "favorites", label: "收藏夹", count: favlists.length },
@@ -172,13 +209,8 @@ export default function ProfileCenter({ name, boards, favlists, busy, favlistLoa
                         );
                       })}
                     </div>
-                    <div className="mt-3 flex items-center justify-between gap-2">
-                      <span className="shrink-0 text-[11px] text-gray-500">已选 {selectedIds.size} 篇</span>
-                      <div className="flex gap-1.5">
-                        <button disabled={busy || selectedIds.size === 0} onClick={() => onGenerateFavlist("summary")} className="rounded-full bg-[#0066ff] px-3 py-1.5 text-xs font-medium text-white transition hover:bg-[#0052cc] disabled:opacity-40">生成摘要</button>
-                        <button disabled={busy || selectedIds.size === 0} onClick={() => onGenerateFavlist("roadmap")} className="rounded-full border border-[#0066ff]/40 px-3 py-1.5 text-xs font-medium text-[#0066ff] transition hover:bg-[#f0f5ff] disabled:opacity-40">生成路线</button>
-                      </div>
-                    </div>
+                    {/* 已选数量随列表尾随（列表本身在面板滚动区内） */}
+                    <p className="mt-1 px-1 text-[11px] text-gray-400">已选 {selectedIds.size} 篇</p>
                   </>
                 ) : (
                   <EmptyState icon="M4 6h16M4 12h10M4 18h7" hint="点上面的收藏夹，勾选内容后炼图" />
@@ -189,6 +221,29 @@ export default function ProfileCenter({ name, boards, favlists, busy, favlistLoa
         )}
 
       </div>
+
+      {/* 固定底栏：收藏夹勾选后一键生成（不再藏在列表最底部） */}
+      {tab === "favorites" && activeFavlist && !favlistLoading && (
+        <div className="shrink-0 border-t border-[#e8e8e3] bg-white px-4 py-3" data-testid="favlist-generate-bar">
+          <button
+            disabled={busy || selectedIds.size === 0}
+            onClick={() => setModeDialogOpen(true)}
+            className="flex w-full items-center justify-center gap-1.5 rounded-full bg-[#0066ff] px-3 py-2 text-xs font-medium text-white transition hover:bg-[#0052cc] disabled:opacity-40"
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+              <path d="M12 3v13M6 11l6 6 6-6M4 21h16" />
+            </svg>
+            生成{selectedIds.size > 0 ? ` · 已选 ${selectedIds.size} 篇` : ""}
+          </button>
+        </div>
+      )}
+
+      <GenerateModeDialog
+        open={modeDialogOpen}
+        busy={busy}
+        onPick={(mode) => { setModeDialogOpen(false); onGenerateFavlist(mode); }}
+        onClose={() => setModeDialogOpen(false)}
+      />
     </section>
   );
 }

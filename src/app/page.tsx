@@ -541,11 +541,12 @@ export default function Home() {
     finally { setFavlistLoading(false); }
   }, [favlistLoading]);
 
-  const generateFavlistSelection = useCallback((nextMode: "roadmap" | "summary") => {
+  const generateFavlistSelection = useCallback((nextMode: "compare" | "roadmap" | "summary") => {
     if (!activeFavlist) return;
     const picked = favlistItems.filter((item) => selectedFavlistIds.has(item.ContentID));
     if (!picked.length) return;
-    setQuestion(`收藏夹「${activeFavlist.title}」${nextMode === "summary" ? "摘要" : "学习路线"}`); setMode(nextMode); setPendingItems(picked); setShowProfile(false);
+    const label = nextMode === "summary" ? "摘要" : nextMode === "roadmap" ? "学习路线" : "观点对照";
+    setQuestion(`收藏夹「${activeFavlist.title}」${label}`); setMode(nextMode); setPendingItems(picked); setShowProfile(false);
   }, [activeFavlist, favlistItems, selectedFavlistIds]);
   const openSavedBoard = useCallback((board: SavedBoard) => {
     const restoredGraph = board.graph as GraphState;
