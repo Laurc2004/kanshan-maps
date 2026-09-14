@@ -208,3 +208,8 @@
 - 删除：zhihu.ts 的 isZhihuUrl/parseZhihuArticleHtml/fetchZhihuArticleByUrl；stream 路由 URL 分支；输入框粘贴自动切摘要逻辑与 placeholder 提示；zhihu-url.test.ts
 - 验证：tsc 0 错 / 148 tests（142 pass 0 fail 6 skip）/ lint 0 error / build 过
 - 提交 5074819 推送；生产 READY；线上实测：粘贴链接不再走抓取分支，回到正常关键词搜索链路（sources 事件正常返回）
+
+## Session 20 续4 — 2026-09-14（画板控件简化）— complete
+- 用户三项决策：①版式切换渲染不稳定 → 整个移除（applyPresentation → applyPalette，layout 锁定为图自身 kind）②「一键分享至知乎」按钮删除，只留「保存图片」（不再挤在一块）③颜色下拉改为自定义 dropdown（色板圆点+chevron+选中勾，点击外部/Esc 关闭），非原生 select
+- 验证：tsc 0 错 / 149 tests（143 pass 0 fail 6 skip）/ lint 0 error / build 过
+- 提交 bf2c4a4 推送；生产 READY；kanshan.space 200
