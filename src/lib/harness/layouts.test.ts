@@ -54,6 +54,23 @@ test("unsupported layout falls back explicitly and deterministically", () => {
 
 test("same graph produces the same scene IDs and geometry", () => assert.deepEqual(knowledgeGraphToScene(graph("cluster-board")), knowledgeGraphToScene(graph("cluster-board"))));
 
+test("Agent palette switch (id-aligned local re-render) keeps root and arrow anchors in sync", () => {
+  // 前端换色路径：palette 改后重渲染、按 id 映射旧 x/y —— 元素 id 必须逐元素相等，
+  // 且摘要思维导图的 root/箭头不能因 id 漂移而失去坐标对齐（root 错位会导致箭头穿卡）
+  const summaryGraph: KnowledgeGraph = { ...graph("evidence-tree"), metadata: { mode: "summary" }, edges: [] };
+  const before = knowledgeGraphToScene(summaryGraph);
+  const after = knowledgeGraphToScene({ ...summaryGraph, presentation: { ...summaryGraph.presentation, palette: "research-mono" } });
+  const ids = (els: Record<string, unknown>[]) => els.map((e) => e.id);
+  assert.deepEqual(ids(after), ids(before), "palette switch must preserve element ids for coordinate remap");
+  // 卡片高度不受 palette 影响（同一 graph 只换色），旧坐标映射后依然零重叠
+  const boxesOf = (els: Record<string, unknown>[]) => new Map(els.map((e) => [e.id as string, e as { x: number; y: number; width: number; height: number }]));
+  const b1 = boxesOf(before), b2 = boxesOf(after);
+  for (const [id, box] of b2) {
+    const old = b1.get(id)!;
+    assert.deepEqual({ w: box.width, h: box.height }, { w: old.width, h: old.height }, `${id} geometry must not change on palette switch`);
+  }
+});
+
 test("unassigned nodes occupy unique fallback slots and edge rate-limit drops redundant arrows", () => {
   const value = graph("swimlane-roadmap");
   value.groups = [{ id: "g1", label: "One", nodeIds: ["n0"] }];
@@ -104,6 +121,41 @@ test("evidence-tree connects its root to every child and places children to the 
   assert.ok(children.every((child) => child.x > root.x + root.width));
   assert.equal(scene.filter((element) => element.type === "arrow" && element.startNodeId === "evidence-root").length, children.length);
   for (const child of children) assert.ok(scene.some((element) => element.type === "arrow" && element.startNodeId === "evidence-root" && element.endNodeId === child.customData.nodeId));
+});
+
+// 文章摘要思维导图：根节点垂直中心必须与左右分支列中心对齐；箭头端点必须落在卡片水平侧缘（不得从卡片顶/底穿入压卡）
+test("summary mindmap root is vertically centered and branch arrows hit card side edges", () => {
+  const summaryGraph: KnowledgeGraph = {
+    ...graph("evidence-tree"),
+    metadata: { mode: "summary" },
+    edges: [],
+  };
+  const scene = knowledgeGraphToScene(summaryGraph);
+  const root = scene.find((element) => element.id === "evidence-root") as { x: number; y: number; width: number; height: number };
+  assert.ok(root);
+  const cards = scene.filter((element) => element.type === "rectangle" && String(element.id).startsWith("node-")) as Array<{ id: string; x: number; y: number; width: number; height: number }>;
+  assert.equal(cards.length, 6);
+  const left = cards.filter((c) => c.x < root.x);
+  const right = cards.filter((c) => c.x > root.x);
+  assert.ok(left.length > 0 && right.length > 0, "mindmap must split branches left/right");
+  // 根垂直中心 ≈ 较高一侧分支列的垂直中心（positions 已把短列向中心补齐）
+  const colCenter = (members: typeof cards) => (Math.min(...members.map((c) => c.y)) + Math.max(...members.map((c) => c.y + c.height))) / 2;
+  const taller = Math.max(...[left, right].map((m) => Math.max(...m.map((c) => c.y + c.height)) - Math.min(...m.map((c) => c.y))));
+  const centered = [left, right].find((m) => Math.max(...m.map((c) => c.y + c.height)) - Math.min(...m.map((c) => c.y)) === taller)!;
+  const rootCy = root.y + root.height / 2;
+  assert.ok(Math.abs(rootCy - colCenter(centered)) <= 1, `root center ${rootCy} should equal branch column center ${colCenter(centered)}`);
+  // 箭头端点：终点必须落在卡片左/右边缘（x == card.x 或 x == card.x+width），y 为卡片垂直中点；不得穿卡
+  const arrows = scene.filter((element) => element.type === "arrow" && element.startNodeId === "evidence-root") as Array<{ x: number; y: number; points: [number, number][]; endNodeId: string }>;
+  assert.equal(arrows.length, cards.length);
+  for (const a of arrows) {
+    const [startRel, endRel] = a.points;
+    const startAbs = { x: a.x + startRel[0], y: a.y + startRel[1] };
+    const endAbs = { x: a.x + endRel[0], y: a.y + endRel[1] };
+    assert.ok(startAbs.x === root.x || startAbs.x === root.x + root.width, `arrow must leave root side edge, got x=${startAbs.x}`);
+    assert.ok(Math.abs(startAbs.y - rootCy) <= 0.001, "arrow must leave root at its vertical center");
+    const card = cards.find((c) => Math.abs(endAbs.y - (c.y + c.height / 2)) <= 0.001 && (endAbs.x === c.x || endAbs.x === c.x + c.width));
+    assert.ok(card, `arrow end (${endAbs.x},${endAbs.y}) must land on a card side edge midpoint, not pierce top/bottom`);
+  }
 });
 
 test("cards grow to fit 3-line titles and 6-line bodies without text escaping the card (S5)", () => {

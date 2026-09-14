@@ -264,6 +264,16 @@
 - [x] 18.6 Share: helper covers cited copy, safe filename, cancellation classification, clipboard/download/watermark primitives; panel integration present.
 - [x] 18.7 Release: full Node runner, typecheck, lint, build, diff check, local production HTTP/API smoke, Playwright desktop/mobile UI smoke, commit/push, Vercel production deploy and public readback.
 
+## Phase 22: 摘要思维导图几何根修 + Agent 版式切换修复 — status: complete
+背景：用户反馈 ①文章摘要思维导图箭头重叠/压卡、中间卡片不垂直居中 ②看山助手无法修改结构/样式（说「换成思维导图」图不变）。
+
+- [x] T1 箭头穿卡根修：思维导图分支箭头弃用通用 anchors()（对上下错位卡判垂直连线，从卡顶/底穿入），改强制水平连线——端点精确落在根与卡片的侧边缘中点（layouts.ts mindmapAnchor）
+- [x] T2 根节点垂直居中根修：根 y 不再用「总卡高+⌈n/2⌉间距」近似公式（与 positions() 口径不一致导致漂移），改为从实际渲染 boxes 算左右列高、与较高列跨度中心精确对齐（实测 rootOffset=0）
+- [x] T3 Agent 结构/样式失效根修：摘要图 kind 本就是 evidence-tree，旧规则「换成思维导图」只重设 presentation.layout（无操作）且没翻转 metadata.mode=summary → 新增 set_mode 语义变更（types/apply/router/decide 四层），规则+模型 prompt 双路径；「换回证据树」可还原
+- [x] T4 前端重绘判定：page.tsx geometryChanged 增加监听 metadata.mode，版式开关变化强制全量重排（否则被「保留坐标」局部渲染吞掉）
+- [x] T5 清理：删除上期遗留未跟踪的 src/app/palette-repro*.test.ts（失效 @ts-expect-error 一直卡 tsc/build）
+- [x] T6 验证：全量 159 tests（153 pass/0 fail/6 skip）· tsc 0 错 · lint 0 error · build 16 路由 · 几何脚本（真实中文长文案）箭头穿卡 0/碰撞 0 · E2E 真实 UI 生成后画板断言（root 居中 0 偏移、6 箭头全贴侧缘、零穿卡零重叠、0 pageerror）· /api/agent 实测三场景（思维导图/黑白/还原证据树）全部 changed+正确生效
+
 ## Phase 20: 八项反馈修复轮（摘要思维导图 / 按钮入画板 / Agent 视觉 / 个人中心侧栏 / 去画布来源 / 知乎链接输入 / 版式修复）— status: in_progress
 背景：Phase 19 未提交改动在树上的基础上，用户提出 8 项。分工：逻辑（glm 5.3=本会话模型）负责诊断+实现，样式细节可再派 kimi k3 子代理润色。
 - [x] 0 只读诊断（glm 5.3 子代理 deleg_396d75ce 完成 6 项根因报告；k3 重复诊断已叫停）

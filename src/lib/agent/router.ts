@@ -2,12 +2,14 @@
 import type { AgentIntent, GraphChange, AgentContext } from "./types.ts";
 
 const RENAME_RE = /标题|名字|改名|改叫|换成.{0,8}(标题|名字)/;
-const STYLE_RE = /颜色|风格|好看|手绘|配色|调色|皮肤|主题|布局|排版|紧凑|稀疏|黑白|单色|简约|柔和|淡雅|宽松|视觉|思维导图/;
+const STYLE_RE = /颜色|风格|好看|手绘|配色|调色|皮肤|主题|布局|排版|紧凑|稀疏|黑白|单色|简约|柔和|淡雅|宽松|视觉|思维导图|证据树|版式|树状/;
 const EMPHASIZE_RE = /重点|突出|高亮|强调|标星|放大/;
 const REWRITE_RE = /精简|改短|缩短|改写|润色|重写|提炼|压缩/;
 const STRUCTURE_RE = /删除|删掉|去掉|移除|保留|合并|整理|重组|最弱|多余|重复/;
 const ANSWER_RE = /为什么|怎么看|是什么|核心|分歧|区别|谁对|哪个对|解释|分析|评价|靠谱/;
 const RELAYOUT_RE = /重新排版|重新布局|重排|排一下/;
+const MINDMAP_RE = /思维导图|树状图|左右分支|分支图/;
+const TREE_RE = /证据树|层级树|单侧分支|换回.{0,4}树|还原版式/;
 
 export interface RouteResult {
   intent: AgentIntent;
@@ -117,7 +119,18 @@ export function changesFromRules(
     if (m) return [{ type: "rename_graph", title: m[1].replace(/^[成为叫\s]+/, "").replace(/[。！!？?]+$/, "") }];
   }
   if (route.intent === "style") {
-    if (/思维导图|树状/.test(text)) return [{ type: "set_presentation", patch: { layout: "evidence-tree" } }];
+    // 思维导图/证据树切换必须 set_mode（metadata.mode）+ 对齐 layout；只改 presentation.layout
+    // 会撞上摘要图的思维导图分支（evidence-tree + metadata.mode=summary）渲染不出来
+    if (MINDMAP_RE.test(text)) {
+      return ctx.mode === "summary"
+        ? [{ type: "set_mode", mode: "summary" }]
+        : [{ type: "set_presentation", patch: { layout: "evidence-tree" } }, { type: "set_mode", mode: "summary" }];
+    }
+    if (TREE_RE.test(text)) {
+      return ctx.mode === "summary"
+        ? [{ type: "set_presentation", patch: { layout: "evidence-tree" } }, { type: "set_mode", mode: null }]
+        : [{ type: "set_presentation", patch: { layout: "evidence-tree" } }];
+    }
     if (/蓝色|知乎蓝/.test(text)) return [{ type: "set_presentation", patch: { palette: "zhihu-blue" } }];
     if (/黑白|单色|简约/.test(text)) return [{ type: "set_presentation", patch: { palette: "research-mono" } }];
     if (/彩色|活泼|明快|大胆/.test(text)) return [{ type: "set_presentation", patch: { palette: "poster-bold" } }];

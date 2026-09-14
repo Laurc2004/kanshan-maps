@@ -611,8 +611,18 @@ export default function Home() {
     (g: GraphState, appliedLabels?: string[]) => {
       const previous = graphRef.current;
       const nextMode: Mode = "stages" in g ? "roadmap" : graphMode;
-      // presentation 任一视觉字段（版式/密度/层级/调色/线条）变化都视为几何变化，必须全量重渲染
-      const geometryChanged = "presentation" in g && (!previous || !(("presentation") in previous) || (["layout", "density", "hierarchy", "palette", "stroke"] as const).some((key) => JSON.stringify(g.presentation[key as keyof typeof g.presentation]) !== JSON.stringify(previous.presentation[key as keyof typeof previous.presentation])));
+      // presentation 任一视觉字段（版式/密度/层级/调色/线条）或 metadata.mode（思维导图开关）变化
+      // 都视为几何变化，必须全量重渲染（只换色换字才保留用户坐标）
+      const geometryChanged =
+        ("presentation" in g &&
+          (!previous ||
+            !("presentation" in previous) ||
+            (["layout", "density", "hierarchy", "palette", "stroke"] as const).some(
+              (key) => JSON.stringify(g.presentation[key as keyof typeof g.presentation]) !== JSON.stringify(previous.presentation[key as keyof typeof previous.presentation])
+            ))) ||
+        ("nodes" in g &&
+          (g as KnowledgeGraph).metadata?.mode !==
+            (previous && "nodes" in previous ? (previous as KnowledgeGraph).metadata?.mode : undefined));
       setGraph(g);
       graphRef.current = g;
       setGraphMode(nextMode);

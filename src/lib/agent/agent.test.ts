@@ -126,6 +126,48 @@ test("validate: set_presentation rejects bad palette", () => {
   assert.equal(issues.length, 1);
 });
 
+// 思维导图/证据树切换：只改 presentation.layout 撞上摘要图 summary 分支，必须 set_mode
+test("router: 换成思维导图 on evidence-tree flips metadata.mode via set_mode", () => {
+  const summaryBoard: KnowledgeGraph = { ...graph(), kind: "evidence-tree", presentation: { ...graph().presentation, layout: "evidence-tree" } };
+  const ctx = buildAgentContext(summaryBoard);
+  const route = routeByRules("换成思维导图", ctx);
+  assert.equal(route?.intent, "style");
+  const changes = changesFromRules(route!, "换成思维导图", ctx);
+  assert.deepEqual(changes, [
+    { type: "set_presentation", patch: { layout: "evidence-tree" } },
+    { type: "set_mode", mode: "summary" },
+  ]);
+  const result = applyChangesAtomically(summaryBoard, changes!);
+  assert.equal(result.ok, true);
+  assert.equal(result.graph.metadata?.mode, "summary");
+  assert.equal(result.graph.presentation.layout, "evidence-tree");
+});
+
+test("router: 已经是思维导图时再说换成思维导图只补 set_mode，不动 layout", () => {
+  const summaryBoard: KnowledgeGraph = { ...graph(), kind: "evidence-tree", presentation: { ...graph().presentation, layout: "evidence-tree" }, metadata: { mode: "summary" } };
+  const ctx = buildAgentContext(summaryBoard);
+  const changes = changesFromRules(routeByRules("换成思维导图", ctx)!, "换成思维导图", ctx);
+  assert.deepEqual(changes, [{ type: "set_mode", mode: "summary" }]);
+});
+
+test("router: 换回证据树 on summary mindmap clears metadata.mode", () => {
+  const summaryBoard: KnowledgeGraph = { ...graph(), kind: "evidence-tree", presentation: { ...graph().presentation, layout: "evidence-tree" }, metadata: { mode: "summary" } };
+  const ctx = buildAgentContext(summaryBoard);
+  const changes = changesFromRules(routeByRules("换回证据树", ctx)!, "换回证据树", ctx);
+  assert.deepEqual(changes, [
+    { type: "set_presentation", patch: { layout: "evidence-tree" } },
+    { type: "set_mode", mode: null },
+  ]);
+  const result = applyChangesAtomically(summaryBoard, changes!);
+  assert.equal(result.ok, true);
+  assert.equal(result.graph.metadata?.mode, undefined);
+});
+
+test("validate: set_mode rejects invalid mode value", () => {
+  const issues = validateChanges(graph(), [{ type: "set_mode", mode: "mindmap" as never }]);
+  assert.equal(issues.length, 1);
+});
+
 test("decision parse: empty changes → answer", () => {
   const d = parseDecision('{"reply":"核心分歧是学历与经验的权衡","changes":[]}', () => "low");
   assert.equal(d?.type, "answer");

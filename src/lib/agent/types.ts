@@ -13,6 +13,7 @@ export type GraphChange =
   | { type: "merge_nodes"; nodeIds: string[]; targetLabel: string; description: string }
   | { type: "rewrite_consensus"; items: string[] }
   | { type: "set_presentation"; patch: Partial<PresentationSpec> }
+  | { type: "set_mode"; mode: "summary" | null } // 版式切换：summary=思维导图（中心主题+左右分支）；null=还原证据树
   | { type: "relayout"; scope: "local" | "all" };
 
 export type Risk = "low" | "medium" | "high";
@@ -47,6 +48,8 @@ export interface AgentContext {
   graphVersion: string;
   title: string;
   summary: string;
+  kind: KnowledgeGraph["kind"]; // 当前版式（决定「换成思维导图」需要哪些变更）
+  mode?: string; // metadata.mode（summary = 思维导图分支）
   nodes: Array<{
     id: string;
     label: string;
@@ -64,6 +67,8 @@ export function buildAgentContext(graph: KnowledgeGraph, recentChanges: string[]
     graphVersion: `${graph.nodes.length}n/${graph.edges.length}e`,
     title: graph.title,
     summary: graph.summary,
+    kind: graph.kind,
+    mode: typeof graph.metadata?.mode === "string" ? graph.metadata.mode : undefined,
     nodes: graph.nodes.map((n) => ({
       id: n.id,
       label: n.label,

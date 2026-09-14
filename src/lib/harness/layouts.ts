@@ -99,33 +99,26 @@ function positions(graph: KnowledgeGraph, layout: LayoutKind, tokens: ReturnType
   const width = CARD_W * scale, gap = 80 * tokens.spacing;
   const heightOf = (node: KnowledgeNode) => cardHeight(node, width, tokens);
   if (layout === "debate-grid") {
-    // 左右对立布局：按分组阵营分侧（组0=左、组1=右、其余组=中轴下方共识区）
-    const left: number[] = [], right: number[] = [], center: number[] = [];
+    // 观点对照版式：中心问题胶囊 + 观点卡 2×2 网格（列内垂直堆叠）+ 共识卡底部通栏
+    // 问题/强调卡（id=question 或 emphasis=high）不进网格，由 render() 画成中心胶囊
     const groupOf = (nodeId: string) => graph.groups.findIndex((grp) => grp.nodeIds.includes(nodeId));
+    const viewpoints: number[] = [], consensus: number[] = [];
     nodes.forEach((node, i) => {
-      const gi = groupOf(node.id);
-      if (gi === 0) left.push(i);
-      else if (gi === 1) right.push(i);
-      else center.push(i); // 无分组或第3+组都进共识区
+      if (node.id === "question" || node.emphasis === "high") { boxes[i] = { x: 0, y: 0, width: 0, height: 0 }; return; } // 占位，render 覆盖
+      const groupId = graph.groups[groupOf(node.id)]?.id;
+      if (node.group === "consensus" || groupId === "consensus") consensus.push(i);
+      else viewpoints.push(i);
     });
-    const colW = width + 60 * tokens.spacing;
-    const leftX = 80, rightX = 80 + colW * 2 + 120; // 中间留 120 分隔带
-    const boxes: Box[] = [];
-    const leftYs = stackY(left.map((i) => ({ index: i, height: heightOf(nodes[i]) })), 230, gap);
-    const rightYs = stackY(right.map((i) => ({ index: i, height: heightOf(nodes[i]) })), 230, gap);
-    left.forEach((idx) => { boxes[idx] = { x: leftX, y: leftYs.get(idx)!, width, height: heightOf(nodes[idx]) }; });
-    right.forEach((idx) => { boxes[idx] = { x: rightX, y: rightYs.get(idx)!, width, height: heightOf(nodes[idx]) }; });
-    // 共识/无分组节点：严格放在左右阵营列下方，两列铺开（构造性防重叠，不与侧列冲突）
-    const sideBottom = Math.max(
-      left.length ? Math.max(...left.map((idx) => boxes[idx].y + boxes[idx].height)) : 230,
-      right.length ? Math.max(...right.map((idx) => boxes[idx].y + boxes[idx].height)) : 230,
-    ) + gap;
-    const centerCols: [number[], number[]] = [[], []];
-    center.forEach((idx, k) => centerCols[k % 2].push(idx));
-    centerCols.forEach((col, colIdx) => {
-      const ys = stackY(col.map((i) => ({ index: i, height: heightOf(nodes[i]) })), sideBottom, gap);
-      col.forEach((idx) => { boxes[idx] = { x: leftX + colIdx * colW, y: ys.get(idx)!, width, height: heightOf(nodes[idx]) }; });
-    });
+    const colW = width + 150 * tokens.spacing;
+    const X0 = 70, TOP = 260;
+    const cols: [number[], number[]] = [[], []];
+    viewpoints.forEach((idx, k) => cols[k % 2].push(idx));
+    const colYs = cols.map((col) => stackY(col.map((i) => ({ index: i, height: heightOf(nodes[i]) })), TOP, gap));
+    cols.forEach((col, colIdx) => col.forEach((idx) => { boxes[idx] = { x: X0 + colIdx * colW, y: colYs[colIdx].get(idx)!, width, height: heightOf(nodes[idx]) }; }));
+    // 共识卡：观点区下方通栏横排
+    const vpBottom = viewpoints.length ? Math.max(...viewpoints.map((idx) => boxes[idx].y + boxes[idx].height)) : TOP;
+    const consYs = stackY(consensus.map((i) => ({ index: i, height: heightOf(nodes[i]) })), vpBottom + gap, gap);
+    consensus.forEach((idx, k) => { boxes[idx] = { x: X0 + k * colW, y: consYs.get(idx)!, width, height: heightOf(nodes[idx]) }; });
     return boxes;
   }
   if (layout === "radial-map") {
@@ -178,9 +171,10 @@ function positions(graph: KnowledgeGraph, layout: LayoutKind, tokens: ReturnType
       const rightIdx = nodes.map((_, i) => i).filter((i) => i % 2 === 1);
       const colHeight = (members: number[]) => members.reduce((sum, i) => sum + heightOf(nodes[i]), 0) + Math.max(0, members.length - 1) * gap;
       const maxCol = Math.max(colHeight(leftIdx), colHeight(rightIdx));
+      const colTop = 260;
       // 垂直居中：短的一侧整体上移，让中心节点两侧视觉平衡
-      const leftYs = stackY(leftIdx.map((i) => ({ index: i, height: heightOf(nodes[i]) })), 260 + Math.max(0, (maxCol - colHeight(leftIdx)) / 2), gap);
-      const rightYs = stackY(rightIdx.map((i) => ({ index: i, height: heightOf(nodes[i]) })), 260 + Math.max(0, (maxCol - colHeight(rightIdx)) / 2), gap);
+      const leftYs = stackY(leftIdx.map((i) => ({ index: i, height: heightOf(nodes[i]) })), colTop + Math.max(0, (maxCol - colHeight(leftIdx)) / 2), gap);
+      const rightYs = stackY(rightIdx.map((i) => ({ index: i, height: heightOf(nodes[i]) })), colTop + Math.max(0, (maxCol - colHeight(rightIdx)) / 2), gap);
       return nodes.map((node, i) => {
         const isLeft = i % 2 === 0;
         return { x: isLeft ? 60 : width + 620, y: (isLeft ? leftYs : rightYs).get(i)!, width, height: heightOf(node) };
@@ -246,19 +240,33 @@ function render(graph: KnowledgeGraph, layout: LayoutKind): SceneElement[] {
   boxes.forEach((box, i) => elements.push(...card(graph.nodes[i], box, i, tokens, i + (layout === "cluster-board" ? 1 : 0), nodeLink(graph.nodes[i]))));
   if (layout === "evidence-tree") {
     const mindmap = graph.metadata?.mode === "summary";
-    // 思维导图：根节点放在左右两列之间的走廊垂直居中（与 positions() 的 summary 分支坐标对齐）
+    // 思维导图：根节点放在左右两列之间的走廊，垂直中心与分支列中心精确对齐
+    // （与 positions() summary 分支共用 colTop=260 / 每列卡高+间距 的口径，密度变化也不漂移）
     const root = mindmap
       ? (() => {
           const stepGap = 80 * tokens.spacing;
-          const colContent = boxes.reduce((sum, box) => sum + box.height, 0);
-          const colHeight = Math.max(colContent + Math.max(0, Math.ceil(boxes.length / 2) - 1) * stepGap, 130);
-          return { x: CARD_W * tokens.cardScale + 170, y: 260 + Math.max(0, (colHeight - 130) / 2), width: 340, height: 130 };
+          const colTop = 260;
+          const colHeight = (members: Box[]) =>
+            members.reduce((sum, box) => sum + box.height, 0) + Math.max(0, members.length - 1) * stepGap;
+          const leftBoxes = boxes.filter((_, i) => i % 2 === 0);
+          const rightBoxes = boxes.filter((_, i) => i % 2 === 1);
+          const maxCol = Math.max(colHeight(leftBoxes), colHeight(rightBoxes), 130);
+          return { x: CARD_W * tokens.cardScale + 170, y: colTop + (maxCol - 130) / 2, width: 340, height: 130 };
         })()
       : { x: 60, y: 260, width: 420, height: 130 };
+    // 思维导图分支箭头必须指向卡片侧边缘中点：根在左右两列中间，箭头走水平
+    // （通用 anchors() 会把上下错位的卡判成垂直连线，从卡片顶部穿入，视觉上压到上面的卡）
+    const mindmapAnchor = (child: Box): { start: Point; end: Point } => {
+      const rootCy = root.y + root.height / 2;
+      const childCy = child.y + child.height / 2;
+      return child.x >= root.x + root.width
+        ? { start: { x: root.x + root.width, y: rootCy }, end: { x: child.x, y: childCy } }
+        : { start: { x: root.x, y: rootCy }, end: { x: child.x + child.width, y: childCy } };
+    };
     elements.unshift({ ...base("evidence-root", "ellipse", root, tokens), backgroundColor: tokens.palette.accentFill, strokeColor: tokens.palette.accentStroke }, text("evidence-root-text", root.x + 30, root.y + 35, wrap(graph.title, tokens.keyFindingSize, 360, 2), tokens.keyFindingSize, tokens.palette.accentStroke, 360, tokens));
     graph.nodes.slice(0, 12).forEach((node, i) => {
       const child = boxes[i];
-      const { start, end } = anchors(root, child);
+      const { start, end } = mindmap ? mindmapAnchor(child) : anchors(root, child);
       elements.push(arrow(`evidence-root-edge-${i}`, start, end, "evidence-root", node.id, tokens));
     });
   }

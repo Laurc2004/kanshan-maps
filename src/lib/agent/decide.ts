@@ -18,11 +18,14 @@ const CHANGE_INSTRUCTION = `你是知识图编辑助手。根据用户意图输�
 - {"type":"merge_nodes","nodeIds":["...","..."],"targetLabel":"...","description":"..."}
 - {"type":"rewrite_consensus","items":["..."]}
 - {"type":"set_presentation","patch":{"palette":"zhihu-blue|paper-pastel|research-mono|poster-bold|nature-notes","density":"compact|comfortable|spacious","stroke":"clean|sketch|marker","layout":"debate-grid|radial-map|timeline|swimlane-roadmap|cluster-board|evidence-tree"}}
+- {"type":"set_mode","mode":"summary"} 把 evidence-tree 版式切成思维导图（中心主题+左右分支）；{"type":"set_mode","mode":null} 还原为证据树
 - {"type":"relayout","scope":"local|all"}
 规则：
 - nodeId/groupId 只能用下方给出的真实 ID，禁止编造
 - 删除/合并时必须给每个节点一句理由（引用不足/内容重复/无独立信息）
 - description 不超过 60 字
+- 用户要「思维导图」时：当前版式已是 evidence-tree 就输出 set_mode=summary（不要再改 layout）；否则同时输出 set_presentation.layout=evidence-tree 和 set_mode=summary
+- 用户要「证据树/层级树」且当前已是思维导图（模式 summary）时：输出 set_mode=null（layout 已是 evidence-tree 就不用再改）
 - 如果意图是 answer（只回答），输出 {"reply":"...","changes":[]}
 - 如果指代不明，输出 {"reply":"...","changes":[],"needClarify":["问题1","问题2"]}`;
 
@@ -99,7 +102,7 @@ export async function decideAgentAction(
     const issues = validateChanges(graph, ruleChanges);
     if (issues.length === 0) {
       const risk = classifyRisk(ruleChanges);
-      const reply = route.intent === "rename" ? "标题已更新。" : route.intent === "emphasize" ? "已标为重点。" : route.intent === "style" ? "风格已调整。" : "已处理。";
+      const reply = route.intent === "rename" ? "标题已更新。" : route.intent === "emphasize" ? "已标为重点。" : route.intent === "style" ? (ruleChanges.some((c) => c.type === "set_mode" || (c.type === "set_presentation" && !!c.patch.layout)) ? "版式已调整。" : "风格已调整。") : "已处理。";
       if (risk === "high") {
         return { type: "preview", reply, changes: ruleChanges, risk: "high", confirmation: "这是结构性修改，确认执行吗？" };
       }
@@ -114,7 +117,7 @@ export async function decideAgentAction(
     { role: "system", content: CHANGE_INSTRUCTION },
     {
       role: "user",
-      content: `图标题：${ctx.title}\n可用节点：\n${nodeList}\n可用分组：\n${groupList}\n意图：${route.intent}${route.targetIds.length > 0 ? `\n规则已定位目标：${route.targetIds.join(", ")}` : ""}\n用户要求：${message}`,
+      content: `图标题：${ctx.title}\n当前版式：${ctx.kind}${ctx.mode ? `（模式：${ctx.mode}）` : ""}\n可用节点：\n${nodeList}\n可用分组：\n${groupList}\n意图：${route.intent}${route.targetIds.length > 0 ? `\n规则已定位目标：${route.targetIds.join(", ")}` : ""}\n用户要求：${message}`,
     },
   ]);
   const decision = parseDecision(raw, classifyRisk);

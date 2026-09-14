@@ -55,6 +55,13 @@
 - 故事/知识 列表+详情：`https://api.zhihu.com/km-indep-home/hackathon/v2/{story|knowledge}/{list|<work_id>}`
 - 知识接口可用于"学习路线图"场景的补充素材（P1）
 
+## 追加发现：Phase 22（摘要思维导图几何 + Agent 版式切换）
+- 思维导图（evidence-tree + metadata.mode=summary）的分支箭头不能用通用 anchors()：根在两列中间，对上下错位卡 |dy|>|dx| 会判成垂直连线从卡顶穿入。思维导图必须强制水平连线、端点贴侧缘中点。
+- 根节点垂直居中必须与 positions() 共用同一口径（colTop + 每列实际卡高累计 + gap），不能用「总卡高 + ⌈n/2⌉−1 间距」近似公式——左右列卡数/卡高不均时近似值必然漂移。
+- 摘要图的「思维导图」版式由 metadata.mode=summary 决定而不是 presentation.layout（layout 本来就是 evidence-tree）：Agent 切版式必须翻转 metadata.mode，只改 layout 是无操作。
+- 前端「保留坐标」局部渲染的豁免条件必须不含 metadata.mode 变化；geometryChanged 要同时监听 presentation 五字段 + metadata.mode。
+- 摘要模式看图速查：kind=cluster-board（生成时），presentation.layout=evidence-tree（展示版式），metadata.mode=summary（思维导图开关）——三者各管一段，容易混淆。
+
 ## 追加发现：Phase 14（智能编排提速与质量）
 - 流式出图不能靠 Excalidraw 元素级流式（每张卡是原子元素），体验上靠两阶段综合：骨架事件先落卡片+标题，详情事件后补正文。
 - 骨架阶段输出不带顶层 citations 数组，必须先按节点 citation id 推导 citations 再走 validateCitations，否则节点引用会被白名单清空。

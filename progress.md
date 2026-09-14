@@ -183,6 +183,12 @@
 - 验证：129 tests / 123 pass / 0 fail；lint 0 error；tsc clean；build 通过。
 - 部署：kanshan-maps-ccqrvx628-liurc2004.vercel.app ● READY (Production)
 
+## Session 21 — 2026-09-14（Phase 22: 摘要思维导图几何根修 + Agent 版式切换）— complete
+- 用户反馈：摘要思维导图箭头重叠/压卡、中心卡不垂直居中；看山助手改不了结构/样式
+- 根因：①思维导图分支箭头走通用 anchors()，上下错位卡被判垂直连线从卡顶穿入 ②根 y 用近似公式与 positions() 口径不一致 ③「换成思维导图」只重设 presentation.layout（摘要图本来就是 evidence-tree，无操作），没翻转 metadata.mode=summary ④geometryChanged 没监听 metadata.mode，版式切换被局部渲染吞掉
+- 修复：mindmapAnchor 强制水平连线贴侧缘中点；根 y 从实际 boxes 算列高精确对齐较高列中心；新增 set_mode 变更（types/apply/router/decide + 模型 prompt）；geometryChanged 加 metadata.mode 监听；清理 palette-repro 探针（失效 ts-expect-error 卡 build）
+- 验证：159 tests（153/0/6）· tsc 0 错 · lint 0 error · build 16 路由 · 几何脚本穿卡 0/碰撞 0 · E2E 真实 UI 生成画板断言（rootOffset=0、6 箭头贴侧缘、零穿卡、0 pageerror）· /api/agent 实测三场景全生效
+
 ## Session 20 — 2026-09-14（Phase 20: 八项反馈修复轮）— 待用户验收
 - 诊断：glm 5.3 子代理只读报告 6 项根因；树上 Phase 19 未提交改动已覆盖部分诉求（画布来源文字、摘要 evidence-tree 雏形）
 - 实施：摘要思维导图左右对称分支+根居中；debate-grid 共识区重叠修复；分享/保存/版式/颜色四控件统一嵌入 Excalidraw renderTopRightUI（新 BoardControls.tsx，删 SharePanel/PresentationControls）；Agent 视觉变化判定扩至 palette/stroke + 模型 prompt 补 layout；顶栏新增个人中心入口 + ProfileCenter 三 tab 重写；知乎 URL 直达（isZhihuUrl/parseZhihuArticleHtml/fetchZhihuArticleByUrl + stream 分支 + 输入框自动切模式）

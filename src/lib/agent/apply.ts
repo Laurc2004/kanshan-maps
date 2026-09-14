@@ -91,6 +91,9 @@ export function validateChanges(graph: KnowledgeGraph, changes: GraphChange[]): 
         if (p?.stroke !== undefined) need(STROKES.has(p.stroke), "不支持的线条");
         break;
       }
+      case "set_mode":
+        need(c.mode === "summary" || c.mode === null, "set_mode 只支持 summary 或 null");
+        break;
       case "relayout":
         need(c.scope === "local" || c.scope === "all", "relayout scope 无效");
         break;
@@ -178,7 +181,15 @@ function applyOne(g: KnowledgeGraph, c: GraphChange): string {
         hierarchy: { ...g.presentation.hierarchy, ...(c.patch.hierarchy ?? {}) },
       } as PresentationSpec;
       if (c.patch.layout) g.kind = c.patch.layout;
-      return "已更新视觉风格";
+      return c.patch.layout ? "已切换版式" : "已更新视觉风格";
+    }
+    case "set_mode": {
+      if (c.mode === "summary") {
+        g.metadata = { ...g.metadata, mode: "summary" };
+        return "已切换为思维导图（中心主题 + 左右分支）";
+      }
+      if (g.metadata) delete g.metadata.mode;
+      return "已还原为证据树版式";
     }
     case "relayout":
       return c.scope === "all" ? "已重新布局整图" : "已局部重排";
