@@ -311,7 +311,7 @@
 - [x] T2 card/cardHeight 加 fullText 参数：debate 卡片标题/正文不截断，卡高按完整内容计算；positions debate 分支卡片加宽到 CARD_W_DEBATE=400
 - [x] T3 测试断言同步：无汇聚箭头、卡宽 400、卡文字零省略号；全量 166/166、tsc、lint、build 全绿
 - [x] T4 E2E 真实生成断言全 PASS（无箭头/卡宽 400/文字零截断/2 组对立/共识通栏/页眉居中）
-- [ ] T5 提交部署
+- [x] T5 提交部署（89eff0e 已推 origin/main，Vercel 生产 200）
 
 ## Phase 24: 看山助手对话与图绑定 — status: complete
 背景：用户反馈 生成新图/切换画板后，看山助手上一张图的对话还留在面板里；对话数据应与画板绑定，换图即换会话。
