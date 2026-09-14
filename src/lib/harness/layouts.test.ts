@@ -274,3 +274,79 @@ test("graph header title and summary are centered and never truncated", () => {
     assert.ok(Math.abs(s.x + s.width / 2 - 590) <= 1, "summary text box must be centered on canvas");
   }
 });
+
+// ---------- Phase 27：Agent 结构操作的渲染层支持 ----------
+
+test("group container draws a dashed bounding box around member cards (not counted as overlap)", () => {
+  const value = graph("radial-map");
+  value.groups.push({ id: "wrap-1", label: "", nodeIds: ["n0", "n1"] });
+  value.metadata = { groupContainers: ["wrap-1"] };
+  const scene = knowledgeGraphToScene(value);
+  const box = scene.find((e) => e.id === "groupbox-wrap-1") as { x: number; y: number; width: number; height: number; strokeStyle: string };
+  assert.ok(box, "container box element must exist");
+  assert.equal(box.strokeStyle, "dashed");
+  const cards = scene.filter((e) => /^node-/.test(String(e.id)) && e.type === "rectangle") as Array<{ x: number; y: number; width: number; height: number }>;
+  const m0 = cards[0], m1 = cards[1];
+  // 大框必须完整包住两张成员卡
+  for (const m of [m0, m1]) {
+    assert.ok(box.x <= m.x && box.y <= m.y && box.x + box.width >= m.x + m.width && box.y + box.height >= m.y + m.height, "container must enclose member card");
+  }
+  // 容器框不算重叠违规
+  assert.deepEqual(substantiveCollisions(scene), []);
+});
+
+test("removedEdges hides data edges and remaining edges backfill the rate-limit slot", () => {
+  const value = graph("evidence-tree"); // metadata.mode 不设 → 单侧证据树，根→子箭头 + edges 都会画
+  delete value.metadata;
+  // n0 有两条出边 n0→n1、n0→n2；限流只画第一条。去掉第一条后 n0→n2 应递补画出
+  value.edges = [
+    { fromId: "n0", toId: "n1" },
+    { fromId: "n0", toId: "n2" },
+  ];
+  const before = knowledgeGraphToScene(value);
+  const arrowsBefore = before.filter((e) => e.type === "arrow" && String(e.id).startsWith("edge-"));
+  assert.equal(arrowsBefore.length, 1, "rate limit shows only the first out-edge");
+  value.metadata = { removedEdges: ["n0→n1"] };
+  const after = knowledgeGraphToScene(value);
+  const arrowsAfter = after.filter((e) => e.type === "arrow" && String(e.id).startsWith("edge-"));
+  assert.equal(arrowsAfter.length, 1, "second edge backfills the freed slot");
+  assert.equal((arrowsAfter[0] as { startNodeId?: string }).startNodeId, "n0");
+  assert.equal((arrowsAfter[0] as { endNodeId?: string }).endNodeId, "n2");
+});
+
+test("removedEdges hides swimlane lane arrows", () => {
+  const value = graph("swimlane-roadmap");
+  value.groups = [
+    { id: "g1", label: "入门", nodeIds: ["n0", "n1", "n2"] },
+    { id: "g2", label: "进阶", nodeIds: ["n3", "n4", "n5"] },
+  ];
+  const before = knowledgeGraphToScene(value);
+  assert.ok(before.some((e) => e.id === "lane-arrow-0"), "baseline has lane arrow");
+  value.metadata = { removedEdges: ["lane-0→lane-1"] };
+  const after = knowledgeGraphToScene(value);
+  assert.ok(!after.some((e) => e.id === "lane-arrow-0"), "lane arrow hidden after removal");
+});
+
+test("removedEdges hides debate capsule→consensus link and evidence-tree root edges", () => {
+  const debate = graph("debate-grid");
+  debate.nodes = [
+    { id: "question", label: "Q", description: "Q", citations: [], emphasis: "high" },
+    ...debate.nodes.slice(0, 2).map((n, i) => ({ ...n, group: `g${i + 1}` })),
+    { id: "c1", label: "共识", description: "x", citations: [], group: "consensus" },
+  ];
+  debate.groups = [
+    { id: "g1", label: "支持", nodeIds: ["n0"] },
+    { id: "g2", label: "反对", nodeIds: ["n1"] },
+    { id: "consensus", label: "共识", nodeIds: ["c1"] },
+  ];
+  const base = knowledgeGraphToScene(debate);
+  assert.ok(base.some((e) => e.id === "debate-consensus-link"), "baseline has consensus link");
+  debate.metadata = { removedEdges: ["question→debate-consensus"] };
+  assert.ok(!knowledgeGraphToScene(debate).some((e) => e.id === "debate-consensus-link"), "consensus link hidden");
+
+  const tree = graph("evidence-tree");
+  tree.metadata = { mode: "summary", removedEdges: ["evidence-root→n1"] };
+  const scene = knowledgeGraphToScene(tree);
+  assert.ok(!scene.some((e) => e.id === "evidence-root-edge-1"), "root edge to n1 hidden");
+  assert.ok(scene.some((e) => e.id === "evidence-root-edge-0"), "other root edges intact");
+});

@@ -287,3 +287,12 @@
 - globals.css 新增 float-soft keyframes（translateY -6px 缓慢漂浮，存在感远低于动图）
 - 保留：working.gif（生成中 loading，非长期显示）、idle.gif（登录态/弹窗小图标）
 - 验证：tsc 0 / lint 0 error / build 过；6fea11d 已部署生产（curl 200 + 首页 HTML 含 static-*.png）
+
+## 2026-09-14 Phase 27: 看山助手结构理解修复（增删节点/连线/分组容器）
+- 诊断：GraphChange 无 add_node/add_group/add_edge/remove_edges；router 无新增意图正则且 clarify 条件吞掉无目标的新增请求；debate/swimlane 装饰箭头不走 graph.edges 无法被任何操作触及；AgentContext 不给模型看 edges
+- 改动：agent/types.ts +4 GraphChange；apply.ts validate+risk+apply（add_node 确定性 ID、add_group 空 label=容器分组入 metadata.groupContainers、remove_edges 记 metadata.removedEdges 支持装饰 ID、add_edge 恢复可逆）；router.ts +ADD_NODE/EDGE_OFF/EDGE_ON/EDGE_RESTORE/CONTAINER 正则 + clarify 吞咽条件放宽 + 分类器 prompt；decide.ts CHANGE_INSTRUCTION 补 4 类型 + edges/容器分组白名单注入 + 高风险预览摘要补 remove_edges；layouts.ts 容器大框渲染（包围盒+虚线置底）+ removedEdges 过滤三类箭头（数据边/lane-arrow/debate-consensus-link/evidence-root-edge）+ 限流递补；page.tsx geometryChanged 补节点/边/分组数量+removedEdges+groupContainers+分组归属变化全量重排 + structural 话术正则扩充
+- 验证：tsc 0 错；lint 0 error（6 既有 warning）；node --test 190 tests（184 pass / 0 fail / 6 OAuth skip）；npm run build 过；git diff --check 净
+- 真实 API 实测（本地 next start + builtin 引擎）：①「学习路线只生成了三点，再加第四点：工程化与部署」→ 新增节点成功 ②「大卡片包住 HTML/CSS 和 JS 核心」→ wrap 容器包住 2 卡、stage 归属不变 ③「去掉第一站到第二站的箭头」→ preview 确认→commit→removedEdges=['lane-0→lane-1'] ④「恢复箭头」→ add_edge lane 装饰恢复、removedEdges 清空、graph.edges 无污染 ⑤「把 React 和工程化连起来」→ add_edge 成功 ⑥模糊「再补充一点」→ 模型产真实内容「版本控制（Git）」非占位 ⑦move_node 回归正常
+- 渲染层集成断言：新卡渲染、容器框包住成员卡、被删 lane 箭头隐藏、全元素 type/id 齐全
+- 修的 bug：ADD_NODE_RE「加一」误吞「把第一个立场标为重点」→ 拆独立分支+让位规则；add_edge 恢复数据边不补回 edges → 已修
+- 待办：用户验收后提交推送

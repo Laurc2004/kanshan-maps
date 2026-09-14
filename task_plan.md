@@ -361,6 +361,37 @@
 - [x] 重写 README.md（一句话定位 + 与通用导图工具对照表、四维评分逐项对照、Harness ASCII 架构图 + 6 条工程设计亮点、技术栈、快速开始 + 环境变量、项目结构、测试基线、路线图、合规致谢）
 - [x] 验证：docs 相对链接存在、域名统一 kanshan.space（线上 200）、测试数字与 Phase 20 记录一致（152/146/0/6、16 路由）
 
+## Phase 27: 看山助手结构理解修复（增删节点/连线/分组容器）— status: in_progress
+背景：用户反馈助手「只能加内容」，结构性需求全部失败：学习路线 3 点加第 4 点不行；一张大卡包住两张小卡不行；去除某点到某点的箭头不行。
+
+### 根因诊断（代码实读确认）
+1. GraphChange 契约根本没有 add_node——能删/合并/移动却不能新增（src/lib/agent/types.ts）
+2. router.ts 没有「添加/新增/加上」意图正则 → 落到模型兜底，clarify 条件（低置信+无 targetIds→追问）直接吞掉「添加」这类本就无现有目标的请求
+3. graph.edges 有数据但 GraphChange 无边操作；且渲染层 debate-grid/swimlane 跳过 graph.edges 画固定装饰箭头 → 去箭头请求（即使走到模型）产出非法 change 被校验拒绝，回复「没通过校验」
+4. 分组只有 move_node 到已有组，没有新建分组；渲染层没有「分组容器」概念，只有泳道背景框（仅 swimlane 版式）
+5. AgentContext 不给模型看 edges 和空 label 的分组 ID，模型无从操作连线
+
+### 设计决策
+- 新增 4 个 GraphChange：add_node（low）/ add_group（low）/ remove_edges（high，带理由确认）/ add_edge（medium）
+- 空 label add_group（不指定 nodeIds）→ metadata.groupContainers 渲染为「包住成员卡的大圆角框+组标签」（大卡包小卡，跨版式生效）
+- remove_edges 后把被删边记入 metadata.removedEdges 集合：debate/swimlane 的固定装饰箭头（lane-arrow / debate-consensus-link）按此集合隐藏，恢复连线可逆；数据型边本就只画 1 出 1 入限流内的子集，删除后剩余边自动递补渲染
+- router 增加「添加/新增/加上/补充一条/再（加）一点」→ structure 意图；clarify 吞咽条件对 structure 放宽（structure 无需现有目标即可直达模型）
+- decide prompt 补 4 个 change 类型 + edges 摘要 + 空 label 分组白名单（agent prompt 必须注入真实 ID 白名单防编造）
+- 前端局部渲染保留：新节点 id 不在旧位置表里自然取新坐标（无需改动 page.tsx）
+
+### 任务
+- [x] T1 types/apply/decide 四层契约扩展（含 validate + risk 分级 + 原子应用 + 结构完整性复用现有检查）
+- [x] T2 router 意图规则 + clarify 条件放宽 + 连线删除正则（「去掉/断开/删除 A到B 的箭头/连线」）
+- [x] T3 layouts.ts：groupContainers 大框渲染（positions 后从成员 box 求包围盒+padding，元素置底 unshift）+ removedEdges 过滤装饰箭头 + graph.edges 渲染上限防蜘蛛网
+- [x] T4 前端重绘判定补网：节点/边/分组数量变化、groupContainers 变化、removedEdges 变化全部触发全量重排（局部渲染保留坐标只用于纯文字/强调/改色，数量变化时旧坐标映射错位还不如全量重排）；「添加/移动/连线」话术加入 appliedLabels structural 正则
+- [x] T5 测试：agent.test.ts +12 用例（新 change 校验/应用/路由/风险分级/装饰箭头恢复）；layouts.test.ts +4 用例（容器框零误报/被删箭头消失+递补/恢复可逆）
+- [x] T6 验证门全绿：tsc 0 错 / lint 0 error（6 既有 warning）/ 190 tests（184 pass 0 fail 6 OAuth skip）/ build 过 / diff check 净；真实 API 实测五场景全过（路线加第4点：新增「工程化与部署」✅ / 大卡包小卡：wrap 容器包住 2 卡不动归属 ✅ / 去站间箭头：高风险 preview→commit 确认流 ✅ / 恢复箭头：lane 装饰箭头 add_edge 恢复、不污染 graph.edges ✅ / 连两张卡 ✅）；渲染层集成断言（新卡渲染/容器框包住成员/被删 lane 箭头隐藏/全元素 type 齐全）
+- [ ] T7 提交推送（待用户验收）
+
+### 实施中修的两个真 bug
+- ADD_NODE_RE 的 `加一` 前缀误吞「把第一个立场标为重点」（EMPHASIZE 回归）→ 拆成 `加一(点|条|个|张)` 独立分支 + ADD_NODE_RE 让位 EMPHASIZE/RENAME
+- add_edge 恢复数据边时只清 removedEdges 没补回 graph.edges（重渲染仍不画）→ 恢复时非装饰边补回 edges
+
 ## Phase 17: 双模式 Harness + Agent 2.0 + 个性化实施 — status: complete
 - [x] A 双模式收缩（compare/roadmap，隐藏 auto）
 - [x] B Agent 2.0（语义协议 + 原子提交 + 风险分级 + 预览确认）

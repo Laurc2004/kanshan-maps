@@ -228,3 +228,145 @@ test("graphHash changes when graph content changes", () => {
   assert.notEqual(graphHash(g1), graphHash(g2));
   assert.equal(graphHash(g1), graphHash(graph()));
 });
+
+// ---------- Phase 27：结构理解修复（增删节点/连线/分组容器）----------
+
+test("router: 加第4点/再加一点 routes to structure with high confidence (no clarify)", () => {
+  const ctx = buildAgentContext(graph());
+  for (const text of ["学习路线只有三点，再加第四点", "再补充一条", "新增一个阶段", "加一张卡片", "再要一个观点"]) {
+    const route = routeByRules(text, ctx);
+    assert.equal(route?.intent, "structure", `"${text}" should route to structure, got ${route?.intent}`);
+    assert.equal(route?.confidence, "high", `"${text}" must be high confidence so clarify does not swallow it`);
+  }
+});
+
+test("router: 去掉 A 到 B 的箭头 routes to structure, targets resolved by label", () => {
+  const ctx = buildAgentContext(graph());
+  const route = routeByRules("去掉支持考研到先就业再考研的箭头", ctx);
+  assert.equal(route?.intent, "structure");
+  assert.deepEqual([...route!.targetIds].sort(), ["n1", "n3"]);
+});
+
+test("router: 大卡包住两点 routes to structure with members resolved", () => {
+  const ctx = buildAgentContext(graph());
+  const route = routeByRules("用一张大卡包住支持考研和支持就业", ctx);
+  assert.equal(route?.intent, "structure");
+  assert.deepEqual([...route!.targetIds].sort(), ["n1", "n2"]);
+});
+
+test("router: 去掉链接 still routes to style (not swallowed by arrow rules)", () => {
+  const ctx = buildAgentContext(graph());
+  const route = routeByRules("把链接去掉", ctx);
+  assert.equal(route?.intent, "style");
+});
+
+test("apply: add_node generates deterministic unique id and joins group", () => {
+  const g = graph();
+  const result = applyChangesAtomically(g, [
+    { type: "add_node", label: "边工作边备考", description: "在职备考时间碎片化", groupId: "g1" },
+  ]);
+  assert.equal(result.ok, true);
+  assert.equal(result.graph.nodes.length, 4);
+  const added = result.graph.nodes[3];
+  assert.equal(added.label, "边工作边备考");
+  assert.equal(added.group, "g1");
+  assert.ok(result.graph.groups.find((grp) => grp.id === "g1")!.nodeIds.includes(added.id));
+  // 再加同名节点 → 序号后缀不冲突
+  const again = applyChangesAtomically(result.graph, [
+    { type: "add_node", label: "边工作边备考", description: "另一个" },
+  ]);
+  assert.equal(again.ok, true);
+  assert.notEqual(again.graph.nodes[4].id, added.id);
+});
+
+test("apply: add_group with empty label registers container without changing node.group", () => {
+  const result = applyChangesAtomically(graph(), [
+    { type: "add_group", label: "", nodeIds: ["n1", "n2"] },
+  ]);
+  assert.equal(result.ok, true);
+  const containers = result.graph.metadata?.groupContainers as string[];
+  assert.equal(containers.length, 1);
+  const wrap = result.graph.groups.find((grp) => grp.id === containers[0])!;
+  assert.deepEqual(wrap.nodeIds, ["n1", "n2"]);
+  // 容器不动版式归属：n1/n2 的 group 字段保持原样
+  assert.equal(result.graph.nodes[0].group, "g1");
+  assert.equal(result.graph.nodes[1].group, "g2");
+});
+
+test("apply: add_group with label moves members out of old groups", () => {
+  const result = applyChangesAtomically(graph(), [
+    { type: "add_group", label: "折中方案", nodeIds: ["n1", "n3"] },
+  ]);
+  assert.equal(result.ok, true);
+  assert.ok(!result.graph.groups.find((grp) => grp.id === "g1")!.nodeIds.includes("n1"));
+  assert.equal(result.graph.nodes.find((n) => n.id === "n1")!.group, result.graph.groups.at(-1)!.id);
+});
+
+test("apply: remove_edges drops data edge and records removedEdges; add_edge restores", () => {
+  const g = graph();
+  const off = applyChangesAtomically(g, [
+    { type: "remove_edges", pairs: [{ fromId: "n1", toId: "n3" }], reason: "用户要求" },
+  ]);
+  assert.equal(off.ok, true);
+  assert.equal(off.graph.edges.length, 0);
+  assert.deepEqual(off.graph.metadata?.removedEdges, ["n1→n3"]);
+  const back = applyChangesAtomically(off.graph, [{ type: "add_edge", fromId: "n1", toId: "n3" }]);
+  assert.equal(back.ok, true);
+  assert.equal(back.graph.edges.length, 1);
+  assert.deepEqual(back.graph.metadata?.removedEdges, []);
+  assert.match(back.applied[0], /恢复/);
+});
+
+test("apply: remove_edges accepts decorative lane ids", () => {
+  const issues = validateChanges(graph(), [
+    { type: "remove_edges", pairs: [{ fromId: "lane-0", toId: "lane-1" }], reason: "不要站间箭头" },
+  ]);
+  assert.equal(issues.length, 0);
+  const result = applyChangesAtomically(graph(), [
+    { type: "remove_edges", pairs: [{ fromId: "lane-0", toId: "lane-1" }], reason: "不要站间箭头" },
+  ]);
+  assert.equal(result.ok, true);
+  assert.ok((result.graph.metadata?.removedEdges as string[]).includes("lane-arrow-0→lane-1"));
+});
+
+test("validate: rejects unknown node/self-loop/empty container", () => {
+  assert.equal(validateChanges(graph(), [{ type: "add_edge", fromId: "n1", toId: "ghost" }]).length, 1);
+  assert.equal(validateChanges(graph(), [{ type: "add_edge", fromId: "n1", toId: "n1" }]).length, 1);
+  assert.equal(validateChanges(graph(), [{ type: "add_group", label: "", nodeIds: [] }]).length, 1);
+  assert.equal(validateChanges(graph(), [{ type: "remove_edges", pairs: [{ fromId: "n1", toId: "ghost" }], reason: "x" }]).length, 1);
+  assert.equal(validateChanges(graph(), [{ type: "add_node", label: "  ", description: "x" }]).length, 1);
+});
+
+test("risk: remove_edges high / add_edge medium / add_node low / add_group low", () => {
+  assert.equal(classifyRisk([{ type: "remove_edges", pairs: [{ fromId: "n1", toId: "n2" }], reason: "x" }]), "high");
+  assert.equal(classifyRisk([{ type: "add_edge", fromId: "n1", toId: "n2" }]), "medium");
+  assert.equal(classifyRisk([{ type: "add_node", label: "x", description: "y" }]), "low");
+  assert.equal(classifyRisk([{ type: "add_group", label: "", nodeIds: ["n1"] }]), "low");
+});
+
+test("apply: remove_nodes cleans container groups and removedEdges stay consistent", () => {
+  const boxed = applyChangesAtomically(graph(), [{ type: "add_group", label: "", nodeIds: ["n1", "n3"] }]);
+  assert.equal(boxed.ok, true);
+  const removed = applyChangesAtomically(boxed.graph, [{ type: "remove_nodes", nodeIds: ["n3"], reasons: ["重复"] }]);
+  assert.equal(removed.ok, true);
+  // 容器分组成员同步清理，不留下悬空引用（结构完整性检查兜底）
+  const wrapId = (boxed.graph.metadata?.groupContainers as string[])[0];
+  assert.deepEqual(removed.graph.groups.find((grp) => grp.id === wrapId)!.nodeIds, ["n1"]);
+});
+
+test("apply: add_edge restores decorative lane arrow (clears derived lane-arrow record)", () => {
+  const off = applyChangesAtomically(graph(), [
+    { type: "remove_edges", pairs: [{ fromId: "lane-0", toId: "lane-1" }], reason: "不要站间箭头" },
+  ]);
+  assert.equal(off.ok, true);
+  const back = applyChangesAtomically(off.graph, [{ type: "add_edge", fromId: "lane-0", toId: "lane-1" }]);
+  assert.equal(back.ok, true);
+  assert.deepEqual(back.graph.metadata?.removedEdges, []);
+  assert.equal(back.graph.edges.length, 1, "decorative restore must not pollute graph.edges");
+  assert.match(back.applied[0], /恢复/);
+});
+
+test("validate: add_edge accepts decorative ids", () => {
+  assert.equal(validateChanges(graph(), [{ type: "add_edge", fromId: "lane-0", toId: "lane-1" }]).length, 0);
+  assert.equal(validateChanges(graph(), [{ type: "add_edge", fromId: "question", toId: "debate-consensus" }]).length, 0);
+});

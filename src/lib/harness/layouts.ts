@@ -290,6 +290,19 @@ function render(graph: KnowledgeGraph, layout: LayoutKind): SceneElement[] {
   const tokens = presentationTokens(spec);
   const elements = header(graph, tokens);
   const boxes = positions(graph, layout, tokens);
+  // 看山助手 remove_edges 去掉的连线集合（"fromId→toId"），对数据型边和固定装饰箭头统一生效
+  const removedEdges = new Set(
+    Array.isArray(graph.metadata?.removedEdges)
+      ? (graph.metadata.removedEdges as unknown[]).filter((x): x is string => typeof x === "string")
+      : [],
+  );
+  const edgeGone = (a: string, b: string) => removedEdges.has(`${a}→${b}`) || removedEdges.has(`${b}→${a}`);
+  // 看山助手 add_group（label 为空）登记的「大卡片容器」分组：画包住成员卡的圆角大框
+  const containerIds = new Set(
+    Array.isArray(graph.metadata?.groupContainers)
+      ? (graph.metadata.groupContainers as unknown[]).filter((x): x is string => typeof x === "string")
+      : [],
+  );
   // 卡片链接：节点 citation id → 真实 URL（没有引用的节点不带链接）
   // metadata.linksEnabled === false 时（看山助手「去除超链接」）所有卡片不带链接；来源数据保留在底部索引
   const linksEnabled = graph.metadata?.linksEnabled !== false;
@@ -321,6 +334,30 @@ function render(graph: KnowledgeGraph, layout: LayoutKind): SceneElement[] {
     // P26：debate 卡片文字全显示（标题/正文不截断，卡高已在 positions 按完整内容撑开）
     elements.push(...card(graph.nodes[i], box, i, tokens, fillIdx, nodeLink(graph.nodes[i]), layout === "debate-grid"));
   });
+  // 「大卡片容器」：看山助手 add_group(label="") 的产物。按成员卡包围盒画圆角大框（虚线描边、极浅底色），
+  // unshift 到元素数组最前确保被成员卡覆盖在最底层；不动成员卡的坐标与归属，撤销= remove_nodes 不需要，直接再 add_group/move 即可
+  for (const grp of graph.groups) {
+    if (!containerIds.has(grp.id)) continue;
+    const memberBoxes = grp.nodeIds
+      .map((nid) => graph.nodes.findIndex((n) => n.id === nid))
+      .filter((i) => i >= 0 && i < boxes.length && boxes[i] && boxes[i].width > 0)
+      .map((i) => boxes[i]);
+    if (memberBoxes.length === 0) continue;
+    const PAD_OUT = 28;
+    const minX = Math.min(...memberBoxes.map((b) => b.x)) - PAD_OUT;
+    const minY = Math.min(...memberBoxes.map((b) => b.y)) - PAD_OUT - 26; // 顶部留出组标签位置
+    const maxX = Math.max(...memberBoxes.map((b) => b.x + b.width)) + PAD_OUT;
+    const maxY = Math.max(...memberBoxes.map((b) => b.y + b.height)) + PAD_OUT;
+    elements.unshift(
+      {
+        ...base(`groupbox-${grp.id}`, "rectangle", { x: minX, y: minY, width: maxX - minX, height: maxY - minY }, tokens),
+        backgroundColor: "transparent",
+        strokeColor: tokens.palette.muted,
+        strokeStyle: "dashed",
+        strokeWidth: tokens.strokeWidth + 0.5,
+      },
+    );
+  }
   if (layout === "debate-grid") {
     // 观点对照版式（P25）：立场列头标签 + 中心问题胶囊 + 观点卡→胶囊按列换色曲线箭头 + 共识通栏长卡
     const capsuleIdx = graph.nodes.slice(0, 12).findIndex(isCapsuleNode);
@@ -382,7 +419,9 @@ function render(graph: KnowledgeGraph, layout: LayoutKind): SceneElement[] {
         const line = wrap(`${k + 1}. ${node.label}${node.description ? `：${node.description}` : ""}`, 15, consW - CARD_PAD * 2 - 56, 2);
         elements.push(text(`debate-consensus-item-${k}`, consBox.x + CARD_PAD + 56, consBox.y + CARD_PAD + 20 * LINE_HEIGHT + 8 + k * (lineH + 6), line, 15, tokens.palette.body, consW - CARD_PAD * 2 - 56, tokens));
       });
-      elements.push(curveArrow("debate-consensus-link", { x: capsule.x + capsule.width / 2, y: capsule.y + capsule.height + 4 }, { x: consBox.x + consBox.width / 2, y: consBox.y - 4 }, linkTargetId, "debate-consensus", tokens, 0.06, consStroke));
+      if (consensusNodes.length && !edgeGone(linkTargetId, "debate-consensus")) {
+        elements.push(curveArrow("debate-consensus-link", { x: capsule.x + capsule.width / 2, y: capsule.y + capsule.height + 4 }, { x: consBox.x + consBox.width / 2, y: consBox.y - 4 }, linkTargetId, "debate-consensus", tokens, 0.06, consStroke));
+      }
     }
   }
   if (layout === "evidence-tree") {
@@ -434,6 +473,7 @@ function render(graph: KnowledgeGraph, layout: LayoutKind): SceneElement[] {
       },
     );
     graph.nodes.slice(0, 12).forEach((node, i) => {
+      if (edgeGone("evidence-root", node.id)) return; // 看山助手去掉了根→该卡的连线
       const child = boxes[i];
       const { start, end } = mindmap ? mindmapAnchor(child) : anchors(root, child);
       elements.push(arrow(`evidence-root-edge-${i}`, start, end, "evidence-root", node.id, tokens));
@@ -444,6 +484,7 @@ function render(graph: KnowledgeGraph, layout: LayoutKind): SceneElement[] {
   const outCount = new Map<string, number>(), inCount = new Map<string, number>();
   // debate-grid：边已由「卡→胶囊」汇聚箭头表达，跳过 edges 防蜘蛛网；swimlane 同理（阶段箭头已画）
   if (layout !== "debate-grid" && layout !== "swimlane-roadmap") for (const edge of graph.edges) {
+    if (edgeGone(edge.fromId, edge.toId)) continue; // 看山助手已去掉这条连线（剩余边自动递补进限流名额）
     const from = graph.nodes.findIndex((node) => node.id === edge.fromId), to = graph.nodes.findIndex((node) => node.id === edge.toId);
     if (from < 0 || to < 0 || !boxes[from] || !boxes[to]) continue;
     if ((outCount.get(edge.fromId) ?? 0) >= 1 || (inCount.get(edge.toId) ?? 0) >= 1) continue;
@@ -481,9 +522,10 @@ function render(graph: KnowledgeGraph, layout: LayoutKind): SceneElement[] {
         text(`lane-head-${group}`, box.x + 18, 230, wrap(`第${group + 1}站 · ${label}`, tokens.keyFindingSize, box.width - 36, 1), tokens.keyFindingSize, tokens.palette.strokes[group % tokens.palette.strokes.length], box.width - 36, tokens),
       );
     }
-    // 阶段间曲线箭头（泳道间走廊内，旧路线图同款微弯）
+    // 阶段间曲线箭头（泳道间走廊内，旧路线图同款微弯）；被看山助手去掉的站间箭头按 removedEdges 隐藏
     for (let k = 0; k < laneBoxes.length - 1; k++) {
       const a = laneBoxes[k].box, b = laneBoxes[k + 1].box;
+      if (edgeGone(`lane-${k}`, `lane-${k + 1}`)) continue;
       elements.push(curveArrow(`lane-arrow-${k}`, { x: a.x + a.width + 8, y: a.y + 70 }, { x: b.x - 8, y: b.y + 70 }, `lane-${k}`, `lane-${k + 1}`, tokens, (k % 2 === 0 ? 0.1 : -0.1), tokens.palette.muted));
     }
   }

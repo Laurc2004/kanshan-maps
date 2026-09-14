@@ -636,7 +636,22 @@ export default function Home() {
           ((g as KnowledgeGraph).metadata?.mode !==
             (previous && "nodes" in previous ? (previous as KnowledgeGraph).metadata?.mode : undefined) ||
             (g as KnowledgeGraph).metadata?.linksEnabled !==
-              (previous && "nodes" in previous ? (previous as KnowledgeGraph).metadata?.linksEnabled : undefined)));
+              (previous && "nodes" in previous ? (previous as KnowledgeGraph).metadata?.linksEnabled : undefined) ||
+            // 结构数量变化（增删卡片/连线/分组容器）必须全量重排：
+            // 局部渲染把旧坐标映射给同 id 元素，容器大框/新卡片会按错位的包围盒画出来
+            (g as KnowledgeGraph).nodes.length !==
+              (previous && "nodes" in previous ? (previous as KnowledgeGraph).nodes.length : -1) ||
+            (g as KnowledgeGraph).edges.length !==
+              (previous && "nodes" in previous ? (previous as KnowledgeGraph).edges.length : -1) ||
+            (g as KnowledgeGraph).groups.length !==
+              (previous && "nodes" in previous ? (previous as KnowledgeGraph).groups.length : -1) ||
+            JSON.stringify((g as KnowledgeGraph).metadata?.removedEdges) !==
+              JSON.stringify(previous && "nodes" in previous ? (previous as KnowledgeGraph).metadata?.removedEdges : undefined) ||
+            JSON.stringify((g as KnowledgeGraph).metadata?.groupContainers) !==
+              JSON.stringify(previous && "nodes" in previous ? (previous as KnowledgeGraph).metadata?.groupContainers : undefined) ||
+            // 分组归属变化（add_group 移动成员/move_node）也触发全量重排
+            JSON.stringify((g as KnowledgeGraph).groups.map((grp) => grp.nodeIds)) !==
+              JSON.stringify(previous && "nodes" in previous ? (previous as KnowledgeGraph).groups.map((grp) => grp.nodeIds) : [])));
       setGraph(g);
       graphRef.current = g;
       setGraphMode(nextMode);
@@ -645,7 +660,7 @@ export default function Home() {
       // 结构变化（删除/合并/移动/重排）→ 全量重排防重叠
       // 结构性修改或视觉参数变化必须整体重排；文字修改沿用用户坐标
       const structural =
-        /删除|合并|移动|移出|重排|重新布局/.test(labels) ||
+        /删除|合并|移动|移出|重排|重新布局|新增|补充|连线|箭头|包住|圈|分组/.test(labels) ||
         geometryChanged ||
         appliedLabels === undefined;
       if (!structural && apiRef.current) {

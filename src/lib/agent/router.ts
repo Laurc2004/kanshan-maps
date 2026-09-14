@@ -13,6 +13,14 @@ const TREE_RE = /证据树|层级树|单侧分支|换回.{0,4}树|还原版式/;
 // 卡片超链接开关：「去除/不要链接」优先于删除/改写类规则（链接是渲染属性，不是内容）
 const LINK_OFF_RE = /(去掉|去除|移除|取消|删掉|删除|关闭|不要|禁用|隐藏).{0,5}(超链接|链接|跳转|网址)|(链接|超链接).{0,4}(去掉|去除|删掉|删除|关闭|取消)/;
 const LINK_ON_RE = /(恢复|打开|加上|加回|开启).{0,4}(超链接|链接|跳转)/;
+// 新增卡片/观点：「再加一点」「补充一条」「新增一个阶段」「加一张卡片」
+const ADD_NODE_RE = /(添加|新增|加上|补充|再要|再来|补一).{0,6}(点|条|个|张|一项|一项内容|张卡|卡片|节点|观点|立场|阶段|步骤|部分|分支|方面|路线)|加一(点|条|个|张)|(点|条|卡片|观点|立场|阶段|步骤).{0,3}(不够|太少|再加|加一个)|第[一二三四五六七八九十\d]+(点|条|个|步|阶段)/;
+// 连线操作：「去掉 A 到 B 的箭头」「断开两者的连线」「把 1 和 2 连起来」「恢复箭头」
+const EDGE_OFF_RE = /(去掉|去除|断开|删掉|删除|取消|不要).{0,10}(箭头|连线|连接线|关系线)|(箭头|连线).{0,4}(去掉|去除|断开|删掉|删除)/;
+const EDGE_ON_RE = /(连起来|连一下|加连线|加箭头|画条线|连接|关联).{0,4}/;
+const EDGE_RESTORE_RE = /恢复.{0,4}(箭头|连线|连接线)/;
+// 大卡片容器：「一张大卡包住 A 和 B」「把这两点圈在一起/归为一组」
+const CONTAINER_RE = /(大卡|大卡片|大框|框|框起来|圈起来|圈在|包起来|包住|包裹|包含|归为一组|归到一组|放在一起|合并成一组|分成一组)/;
 
 export interface RouteResult {
   intent: AgentIntent;
@@ -44,6 +52,24 @@ export function routeByRules(message: string, ctx: AgentContext): RouteResult | 
 
   if (RELAYOUT_RE.test(text)) {
     return { intent: "structure", targetIds: [], confidence: "high", reason: "明确重新布局请求" };
+  }
+  // 连线/箭头操作必须在 ANSWER_RE 之前：「去掉 A 到 B 的箭头」里的「区别/关系」类词不该误判成问答
+  if (EDGE_RESTORE_RE.test(text)) {
+    return { intent: "structure", targetIds: targets, confidence: "high", reason: "恢复被去掉的连线" };
+  }
+  if (EDGE_OFF_RE.test(text) && !LINK_OFF_RE.test(text)) {
+    return { intent: "structure", targetIds: targets, confidence: "high", reason: "去掉卡片之间的连线/箭头" };
+  }
+  if (EDGE_ON_RE.test(text) && targets.length >= 2) {
+    return { intent: "structure", targetIds: targets, confidence: "high", reason: "在两卡片间加连线" };
+  }
+  // 大卡片容器：「大卡包住 A 和 B」「把这两点圈在一起」——成员已按 label/序数定位
+  if (CONTAINER_RE.test(text) && targets.length >= 1) {
+    return { intent: "structure", targetIds: targets, confidence: "high", reason: "大卡片包住若干小卡片" };
+  }
+  // 新增卡片：本就无现有目标，targetIds 为空是正常的，必须高置信直达模型（否则被 clarify 吞掉）
+  if (ADD_NODE_RE.test(text) && !STRUCTURE_RE.test(text) && !EMPHASIZE_RE.test(text) && !RENAME_RE.test(text)) {
+    return { intent: "structure", targetIds: targets, confidence: "high", reason: "新增卡片/观点" };
   }
   // 超链接开关必须在删除/结构规则之前：用户说「去掉链接」不是删内容
   if (LINK_OFF_RE.test(text) && !LINK_ON_RE.test(text)) {
@@ -82,10 +108,10 @@ export function buildClassifierMessages(message: string, ctx: AgentContext): { r
       content: `你是意图分类器。只输出 JSON：{"intent":"rename|style|emphasize|rewrite|structure|answer|clarify","targetIds":["..."],"reason":"一句话"}。
 规则：
 - answer=只回答不改图（为什么/怎么看/分析类）
-- clarify=指代不明需要追问（它/这个/那个，且无明确目标）
-- structure=删除/合并/重组/保留（高风险，需要用户确认）
+- clarify=指代不明需要追问（它/这个/那个，且无明确目标）——但「新增/添加/补充」类请求不需要指代现有卡片，应判 structure 而不是 clarify
+- structure=新增/删除/合并/移动/分组/连线（增删箭头）等结构性修改（删除/合并高风险，需要用户确认）
 - rename/style/emphasize/rewrite=对应的修改意图
-- targetIds 只能从下方节点 ID 中选，不确定就留空`,
+- targetIds 只能从下方节点 ID 中选，不确定就留空（新增类请求本来就该留空）`,
     },
     {
       role: "user",

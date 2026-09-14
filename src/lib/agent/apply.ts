@@ -9,6 +9,21 @@ const PALETTES = new Set(["zhihu-blue", "paper-pastel", "research-mono", "poster
 const DENSITIES = new Set(["compact", "comfortable", "spacious"]);
 const STROKES = new Set(["clean", "sketch", "marker"]);
 
+// 固定装饰连线的元素 ID（layouts.ts 里不来自 graph.edges 的箭头）：
+// remove_edges 的 pairs 允许用这些 ID 指代「胶囊→共识」「第N站→第N+1站」这类装饰箭头
+export const DECORATIVE_EDGE_IDS = new Set(["question", "debate-consensus", "evidence-root"]);
+const LANE_ARROW_RE = /^lane-\d+$/;
+
+function edgeKey(a: string, b: string): string {
+  return `${a}→${b}`;
+}
+
+// metadata.removedEdges 读写：被去掉的连线集合（对数据型边和装饰箭头统一生效，可逆）
+function removedEdgeSet(g: KnowledgeGraph): Set<string> {
+  const raw = g.metadata?.removedEdges;
+  return new Set(Array.isArray(raw) ? (raw as unknown[]).filter((x): x is string => typeof x === "string") : []);
+}
+
 export interface ValidationIssue {
   changeIndex: number;
   message: string;
@@ -31,9 +46,10 @@ function findGroup(g: KnowledgeGraph, id: string) {
 export function classifyRisk(changes: GraphChange[]): Risk {
   let risk: Risk = "low";
   for (const c of changes) {
-    if (c.type === "remove_nodes" || c.type === "merge_nodes") return "high";
+    if (c.type === "remove_nodes" || c.type === "merge_nodes" || c.type === "remove_edges") return "high";
     if (
       c.type === "move_node" ||
+      c.type === "add_edge" ||
       (c.type === "relayout" && c.scope === "all") ||
       (c.type === "rewrite_consensus" && c.items.length > 2)
     ) {
@@ -65,6 +81,30 @@ export function validateChanges(graph: KnowledgeGraph, changes: GraphChange[]): 
       case "emphasize_node":
         need(nodeIds.has(c.nodeId), `未知节点: ${c.nodeId}`);
         need(["low", "normal", "high"].includes(c.level), "强调级别无效");
+        break;
+      case "add_node":
+        need(typeof c.label === "string" && c.label.trim().length > 0, "新节点的标题不能为空");
+        need(typeof c.description === "string", "新节点需要 description 字段（可为空字符串）");
+        if (c.groupId !== undefined && c.groupId !== null) need(groupIds.has(c.groupId), `未知分组: ${String(c.groupId)}`);
+        break;
+      case "add_group":
+        need(typeof c.label === "string", "add_group 需要 label（空字符串表示大卡片容器）");
+        need(Array.isArray(c.nodeIds) && c.nodeIds.length >= 1, "大卡片至少要包住 1 张卡片");
+        c.nodeIds?.forEach((id) => need(nodeIds.has(id), `未知节点: ${id}`));
+        need(new Set(c.nodeIds).size === c.nodeIds?.length, "容器内节点不能重复");
+        break;
+      case "add_edge":
+        // 允许装饰连线 ID（恢复泳道站间箭头/胶囊→共识）：lane-N、question、debate-consensus、evidence-root
+        need(nodeIds.has(c.fromId) || DECORATIVE_EDGE_IDS.has(c.fromId) || LANE_ARROW_RE.test(c.fromId), `未知节点: ${c.fromId}`);
+        need(nodeIds.has(c.toId) || DECORATIVE_EDGE_IDS.has(c.toId) || LANE_ARROW_RE.test(c.toId), `未知节点: ${c.toId}`);
+        need(c.fromId !== c.toId, "连线两端不能是同一张卡片");
+        break;
+      case "remove_edges":
+        need(Array.isArray(c.pairs) && c.pairs.length > 0, "remove_edges 需要 pairs 列表");
+        c.pairs?.forEach((p) => {
+          need(nodeIds.has(p?.fromId) || DECORATIVE_EDGE_IDS.has(p?.fromId) || LANE_ARROW_RE.test(String(p?.fromId)), `未知连线起点: ${String(p?.fromId)}`);
+          need(nodeIds.has(p?.toId) || DECORATIVE_EDGE_IDS.has(p?.toId) || LANE_ARROW_RE.test(String(p?.toId)), `未知连线终点: ${String(p?.toId)}`);
+        });
         break;
       case "move_node":
         need(nodeIds.has(c.nodeId), `未知节点: ${c.nodeId}`);
@@ -127,6 +167,80 @@ function applyOne(g: KnowledgeGraph, c: GraphChange): string {
       const n = findNode(g, c.nodeId)!;
       n.emphasis = c.level;
       return c.level === "high" ? `「${n.label}」已标为重点` : `调整了「${n.label}」的强调级别`;
+    }
+    case "add_node": {
+      // 新节点 ID 服务端确定性生成：按 label 派生，重名加序号，保证与既有节点不冲突
+      const baseId = `n-${c.label.trim().slice(0, 20).replace(/[^a-zA-Z0-9一-鿿_-]/g, "-")}`;
+      let id = baseId, serial = 2;
+      while (g.nodes.some((n) => n.id === id)) id = `${baseId}-${serial++}`;
+      const node = { id, label: c.label.trim().slice(0, 40), description: c.description.trim().slice(0, 200), citations: [] as string[] };
+      if (c.groupId) {
+        const grp = findGroup(g, c.groupId)!;
+        g.nodes.push({ ...node, group: grp.id });
+        grp.nodeIds.push(id);
+      } else {
+        g.nodes.push(node);
+      }
+      return `新增了「${node.label}」`;
+    }
+    case "add_group": {
+      // 新建分组并把成员移进去；label 为空字符串 = 大卡片容器（渲染层画包住成员卡的大框，不改版式归属）
+      const isContainer = !c.label.trim();
+      const idBase = isContainer ? "wrap" : "grp";
+      let id = idBase, serial = 1;
+      while (g.groups.some((grp) => grp.id === id)) id = `${idBase}-${serial++}`;
+      const members = [...new Set(c.nodeIds)];
+      if (!isContainer) {
+        // 普通分组：成员先退出旧分组，避免一张卡同时属于两列/两簇
+        g.groups.forEach((grp) => { grp.nodeIds = grp.nodeIds.filter((nid) => !members.includes(nid)); });
+        members.forEach((nid) => { findNode(g, nid)!.group = id; });
+      }
+      g.groups.push({ id, label: c.label.trim().slice(0, 30), nodeIds: members });
+      if (isContainer) {
+        // 容器分组登记到 metadata.groupContainers，渲染层按成员卡包围盒画大框
+        const containers = Array.isArray(g.metadata?.groupContainers) ? (g.metadata.groupContainers as unknown[]).filter((x): x is string => typeof x === "string") : [];
+        g.metadata = { ...g.metadata, groupContainers: [...containers.filter((x) => x !== id), id] };
+        return `已用大卡片包住 ${members.length} 张卡片`;
+      }
+      return `新建分组「${c.label.trim()}」（${members.length} 张卡片）`;
+    }
+    case "add_edge": {
+      // 已存在同向边则只从 removedEdges 里恢复（可逆）；否则新增
+      const key = edgeKey(c.fromId, c.toId);
+      const removed = removedEdgeSet(g);
+      // 装饰连线（lane-N→lane-M / question→debate-consensus / evidence-root→节点）不进 graph.edges，只清 removedEdges
+      const isDecorative = !g.nodes.some((n) => n.id === c.fromId);
+      // 泳道装饰箭头恢复时，连 remove_edges 派生的 lane-arrow-N 记录一起清掉
+      const laneFrom = LANE_ARROW_RE.exec(c.fromId);
+      if (laneFrom && LANE_ARROW_RE.test(c.toId)) removed.delete(edgeKey(`lane-arrow-${laneFrom[0].slice(5)}`, c.toId));
+      if (removed.delete(key) || laneFrom) {
+        g.metadata = { ...g.metadata, removedEdges: [...removed] };
+        if (!isDecorative && !g.edges.some((e) => e.fromId === c.fromId && e.toId === c.toId)) {
+          g.edges.push({ fromId: c.fromId, toId: c.toId });
+        }
+        return "已恢复这条连线";
+      }
+      if (isDecorative) return "这条连线本来就在";
+      const exists = g.edges.some((e) => e.fromId === c.fromId && e.toId === c.toId);
+      if (exists) return "这两张卡片之间本来就有连线";
+      g.edges.push({ fromId: c.fromId, toId: c.toId });
+      return "已加上连线";
+    }
+    case "remove_edges": {
+      const removed = removedEdgeSet(g);
+      for (const p of c.pairs) {
+        const key = edgeKey(p.fromId, p.toId);
+        // 已被去掉过的连线：幂等，不重复记录
+        if (removed.has(key)) continue;
+        removed.add(key);
+        g.edges = g.edges.filter((e) => !(e.fromId === p.fromId && e.toId === p.toId));
+        // 泳道装饰箭头：lane-N → lane-(N+1) 是渲染层推导的，graph.edges 里没有，靠 removedEdges 隐藏
+        const laneFrom = LANE_ARROW_RE.exec(p.fromId);
+        const laneTo = LANE_ARROW_RE.exec(p.toId);
+        if (laneFrom && laneTo) removed.add(edgeKey(`lane-arrow-${laneFrom[0].slice(5)}`, p.toId));
+      }
+      g.metadata = { ...g.metadata, removedEdges: [...removed] };
+      return `去掉了 ${c.pairs.length} 条连线（说「恢复连线」可还原）`;
     }
     case "move_node": {
       const n = findNode(g, c.nodeId)!;

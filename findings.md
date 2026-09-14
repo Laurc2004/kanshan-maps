@@ -145,3 +145,10 @@
 - 页面 dev 渲染 OK（curl 200）
 - 样式问题：globals.css 有暗色 media query 会把背景刷成 #0a0a0a 与组件硬编码亮色冲突 → 需移除
 
+
+## Phase 27 发现（2026-09-14）
+- 看山助手「只能加内容」的根因是五层缺失叠加，不是单一 bug：①GraphChange 契约无 add 系操作 ②router 无新增意图正则 ③clarify 吞咽条件（低置信+无 targetIds）把新增请求（本就无现有目标）拦成追问 ④渲染层装饰箭头（lane-arrow/debate-consensus-link/evidence-root-edge）不来自 graph.edges，任何边操作都碰不到它们 ⑤AgentContext 不给模型 edges 和空 label 分组，模型无从操作
+- 装饰连线的可操作化方案：remove_edges 把 "fromId→toId" 记入 metadata.removedEdges，渲染层三类箭头（数据边/lane-N→lane-N+1/question→debate-consensus/evidence-root→节点）统一查该集合隐藏；add_edge 同 key 恢复可逆。lane 删除时派生记录 lane-arrow-N 一并登记/清除
+- 大卡片容器方案：add_group label="" → wrap-N 分组 + metadata.groupContainers 登记；渲染层按成员卡包围盒画虚线大框 unshift 置底，不动成员 node.group（泳道/立场归属不变），布局零位移
+- 前端局部渲染坐标保留的边界：节点/边/分组数量或归属变化时按 id 映射旧坐标会错位（容器框按错包围盒画出）→ geometryChanged 必须监听数量+归属+removedEdges+groupContainers，这些变化全部走全量重排
+- 意图正则教训：「加一」这种宽前缀会吞掉「把第一个立场标为重点」（加一…个），新增意图必须让位 EMPHASIZE/RENAME 且拆「加一(点|条|个|张)」独立分支

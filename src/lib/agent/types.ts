@@ -8,9 +8,13 @@ export type GraphChange =
   | { type: "rename_node"; nodeId: string; label: string }
   | { type: "rewrite_node_description"; nodeId: string; description: string }
   | { type: "emphasize_node"; nodeId: string; level: Emphasis }
+  | { type: "add_node"; label: string; description: string; groupId?: string | null } // 新增一张卡片（学习路线加第 4 点等）；id 服务端生成
+  | { type: "add_group"; label: string; nodeIds: string[] } // 新建分组；label 为空字符串 = 大卡片容器（包住成员卡，只起分组作用）
   | { type: "move_node"; nodeId: string; groupId: string | null }
   | { type: "remove_nodes"; nodeIds: string[]; reasons: string[] }
   | { type: "merge_nodes"; nodeIds: string[]; targetLabel: string; description: string }
+  | { type: "add_edge"; fromId: string; toId: string } // 补一条连线（泳道/思维导图等场景）
+  | { type: "remove_edges"; pairs: Array<{ fromId: string; toId: string }>; reason: string } // 去掉某点到某点的箭头；记入 metadata.removedEdges 对固定装饰箭头（泳道→泳道、胶囊→共识）同样生效，且可逆
   | { type: "rewrite_consensus"; items: string[] }
   | { type: "set_presentation"; patch: Partial<PresentationSpec> }
   | { type: "set_mode"; mode: "summary" | null } // 版式切换：summary=思维导图（中心主题+左右分支）；null=还原证据树
@@ -58,6 +62,7 @@ export interface AgentContext {
     description: string;
     emphasis?: string;
   }>;
+  edges: Array<{ fromId: string; toId: string }>; // 连线（含数据型边）；空 label 分组按 ID 白名单给出，模型可按 ID 操作
   groups: Array<{ id: string; label: string; nodeIds: string[] }>;
   recentChanges: string[];
   selectedNodeIds?: string[];
@@ -78,6 +83,7 @@ export function buildAgentContext(graph: KnowledgeGraph, recentChanges: string[]
       emphasis: n.emphasis,
     })),
     groups: graph.groups.map((g) => ({ id: g.id, label: g.label, nodeIds: g.nodeIds })),
+    edges: graph.edges.map((e) => ({ fromId: e.fromId, toId: e.toId })),
     recentChanges: recentChanges.slice(-5),
   };
 }
