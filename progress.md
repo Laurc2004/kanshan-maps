@@ -296,3 +296,4 @@
 - 渲染层集成断言：新卡渲染、容器框包住成员卡、被删 lane 箭头隐藏、全元素 type/id 齐全
 - 修的 bug：ADD_NODE_RE「加一」误吞「把第一个立场标为重点」→ 拆独立分支+让位规则；add_edge 恢复数据边不补回 edges → 已修
 - 待办：用户验收后提交推送
+- 交付：commit 24d9060 已推 origin/main；vercel deploy --prod → dpl_687nUN7wU2SyxdU6WFu4y4uNBaoX，kanshan.space / kanshan-maps.vercel.app 均 200
