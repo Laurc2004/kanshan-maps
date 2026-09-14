@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import type { ViewpointGraph } from "@/lib/viewpoints";
 import type { KnowledgeGraph } from "@/lib/harness/types";
 import type { RoadmapGraph } from "@/lib/roadmap";
+import { historyFromMessages, loadChat, saveChat } from "@/lib/agent-chat-store";
 
 type AgentGraph = ViewpointGraph | RoadmapGraph | KnowledgeGraph;
 
@@ -33,6 +34,8 @@ export type HarnessProgress = {
 };
 
 // 右栏：AI Agent 连续对话面板
+// sessionId = 画板会话标识：生成新图/切换画板会换新 id，面板据此重载对应会话的聊天记录，
+// 对话数据与图绑定，换图不残留旧对话。
 export default function AgentPanel({
   graph,
   engine,
@@ -40,6 +43,7 @@ export default function AgentPanel({
   onApply,
   onClose,
   progress,
+  sessionId,
 }: {
   graph: AgentGraph | null;
   engine: { id: string; baseURL?: string; apiKey?: string; model?: string };
@@ -47,6 +51,7 @@ export default function AgentPanel({
   onApply: (g: AgentGraph, appliedLabels?: string[]) => void;
   onClose: () => void;
   progress?: HarnessProgress | null;
+  sessionId: string;
 }) {
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState("");
@@ -55,6 +60,27 @@ export default function AgentPanel({
   const bottomRef = useRef<HTMLDivElement>(null);
   const graphRef = useRef<AgentGraph | null>(null);
   graphRef.current = graph;
+  const sessionRef = useRef(sessionId);
+  useEffect(() => {
+    sessionRef.current = sessionId;
+  }, [sessionId]);
+
+  // 会话切换（换图）即重载该画板的聊天记录；history 同步重建
+  const loadedRef = useRef<{ session: string; messages: ChatMsg[] }>({ session: sessionId, messages: [] });
+  useEffect(() => {
+    const restored = loadChat(sessionId);
+    loadedRef.current = { session: sessionId, messages: restored };
+    setMessages(restored);
+    historyRef.current = historyFromMessages(restored);
+  }, [sessionId]);
+
+  // 对话变化即落盘到当前会话
+  useEffect(() => {
+    // 会话切换瞬间 messages 还是旧会话的数据（load 尚未落定），这次渲染跳过写盘避免串会话
+    if (loadedRef.current.session !== sessionId) return;
+    if (messages.length === 0 || loadedRef.current.messages === messages) return;
+    saveChat(sessionId, messages);
+  }, [messages, sessionId]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -75,6 +101,7 @@ export default function AgentPanel({
       return;
     }
     if (!preset) setInput("");
+    const sentSession = sessionRef.current; // 记录发起时的会话：换图后旧图回复不写入新会话
     setMessages((m) => [...m, { role: "user", content: text, ts: Date.now() }]);
     historyRef.current.push({ role: "user", content: text });
     setThinking(true);
@@ -86,6 +113,7 @@ export default function AgentPanel({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "助手开小差了");
+      if (sessionRef.current !== sentSession) return; // 期间已换图：丢弃旧图回复
       historyRef.current.push({ role: "assistant", content: data.reply });
       setMessages((m) => [
         ...m,
@@ -118,6 +146,7 @@ export default function AgentPanel({
   const confirmPreview = async (planId: string, msgIndex: number) => {
     const g = graphRef.current;
     if (!g || thinking) return;
+    const sentSession = sessionRef.current; // 换图后旧图确认结果不写入新会话
     setThinking(true);
     try {
       const res = await fetch("/api/agent", {
@@ -127,6 +156,7 @@ export default function AgentPanel({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "执行失败");
+      if (sessionRef.current !== sentSession) return; // 期间已换图：丢弃旧图执行结果
       setMessages((m) => {
         const next = [...m];
         next[msgIndex] = { ...next[msgIndex], preview: undefined };

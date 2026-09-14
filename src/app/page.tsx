@@ -19,6 +19,7 @@ import ProfileCenter from "@/components/ProfileCenter";
 import { collectKnowledgeSources } from "@/lib/knowledge-assets";
 import { applyPalette, recolorElements } from "@/lib/presentation-controls";
 import { deleteBoard, listSavedBoards, saveBoard, type SavedBoard } from "@/lib/local-library";
+import { newBoardSessionId } from "@/lib/agent-chat-store";
 import { addWatermark } from "@/lib/share";
 import type { PaletteId } from "@/lib/harness/types";
 
@@ -51,6 +52,7 @@ type BoardCache = {
   question: string;
   items?: unknown[];
   savedAt: number;
+  sessionId?: string; // 画板会话标识：恢复画板时看山助手对话跟着回来
 };
 
 export default function Home() {
@@ -90,6 +92,12 @@ export default function Home() {
   const [pendingHot, setPendingHot] = useState<string | null>(null); // 热榜确认弹窗
   const [generating, setGenerating] = useState(false); // 画板生成中遮罩
   const [restored, setRestored] = useState(false); // 是否从缓存恢复
+  // 看山助手会话标识：每张图一个会话，对话与图绑定（生成新图/切换画板都会换新 id）
+  const [boardSession, setBoardSession] = useState(() => newBoardSessionId());
+  const boardSessionRef = useRef(boardSession);
+  useEffect(() => {
+    boardSessionRef.current = boardSession;
+  }, [boardSession]);
 
 
   // 启动：读登录态 + 处理 OAuth 回调错误参数 + 拉热榜
@@ -117,6 +125,8 @@ export default function Home() {
         setGraphMode(normalizeUserMode(cache.mode));
         if (cache.question) setQuestion(cache.question);
         if (Array.isArray(cache.items)) setItems(cache.items as SearchResultItem[]);
+        // 恢复画板时沿用原会话 id：看山助手对话跟着画板一起回来
+        if (cache.sessionId) setBoardSession(cache.sessionId);
         setBoardMounted(true);
         setRestored(true);
       } catch {
@@ -216,7 +226,7 @@ export default function Home() {
   // 画板状态持久化：graph 放 localStorage，元素快照放 sessionStorage（体积大、跨会话不必保真）
   const persistBoard = useCallback((g: GraphState, m: Mode, q: string, its?: SearchResultItem[]) => {
     try {
-      const cache: BoardCache = { graph: g, mode: m, question: q, items: its, savedAt: Date.now() };
+      const cache: BoardCache = { graph: g, mode: m, question: q, items: its, savedAt: Date.now(), sessionId: boardSessionRef.current };
       localStorage.setItem(BOARD_KEY, JSON.stringify(cache));
     } catch {
       /* 配额满则忽略 */
@@ -289,6 +299,10 @@ export default function Home() {
       setGenerating(true); // 画板进入生成态
       setBoardMounted(false); // 清空旧画板，全屏显示生成态
       apiRef.current = null; // 断开旧 Excalidraw 实例
+      // 新图 = 新会话：看山助手旧图对话不带到新图上
+      const nextSession = newBoardSessionId();
+      boardSessionRef.current = nextSession;
+      setBoardSession(nextSession);
       setError(null);
       setStatus("正在连接看山工作台…");
       setHarnessEvent("planning");
@@ -499,6 +513,10 @@ export default function Home() {
     apiRef.current = null;
     pendingRef.current = null;
     graphRef.current = null;
+    // 清空画布 = 新会话：助手对话一并清空
+    const nextSession = newBoardSessionId();
+    boardSessionRef.current = nextSession;
+    setBoardSession(nextSession);
     setGraph(reset.graph);
     setItems(reset.items);
     setQuestion(reset.question);
@@ -548,6 +566,10 @@ export default function Home() {
   const openSavedBoard = useCallback((board: SavedBoard) => {
     const restoredGraph = board.graph as GraphState;
     const restoredMode: Mode = board.mode === "roadmap" ? "roadmap" : "presentation" in restoredGraph && restoredGraph.kind === "cluster-board" ? "summary" : "compare";
+    // 切换画板 = 切换会话：每张保存的图独立会话 id，回到同一张图时对话还在
+    const nextSession = newBoardSessionId();
+    boardSessionRef.current = nextSession;
+    setBoardSession(nextSession);
     setGraph(restoredGraph); graphRef.current = restoredGraph; setGraphMode(restoredMode); setMode(restoredMode); setQuestion(board.title); setBoardMounted(true); setShowProfile(false); renderGraph(restoredGraph, undefined, restoredMode); persistBoard(restoredGraph, restoredMode, board.title);
   }, [persistBoard, renderGraph]);
   const changePalette = useCallback((palette: PaletteId) => {
@@ -1067,6 +1089,7 @@ export default function Home() {
             onApply={applyAgentGraph}
             onClose={() => setShowAgent(false)}
             progress={harnessProgress}
+            sessionId={boardSession}
           />
         )}
         {!showAgent && (
