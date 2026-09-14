@@ -45,9 +45,11 @@ function wrap(value: string, size: number, maxWidth: number, maxLines: number): 
 function base(id: string, type: string, box: Box, tokens: ReturnType<typeof presentationTokens>): SceneElement {
   return { id, type, ...box, angle: 0, strokeColor: tokens.palette.title, backgroundColor: "transparent", fillStyle: "solid", strokeWidth: tokens.strokeWidth, strokeStyle: tokens.strokeStyle, roughness: tokens.roughness, opacity: 100, groupIds: [], frameId: null, index: null, roundness: type === "rectangle" ? { type: 3 } : null, seed: hash(id), version: 1, versionNonce: hash(`${id}-version`), isDeleted: false, boundElements: null, updated: 1, link: null, locked: false };
 }
-function text(id: string, x: number, y: number, value: string, size: number, color: string, maxWidth: number, tokens: ReturnType<typeof presentationTokens>): SceneElement {
+function text(id: string, x: number, y: number, value: string, size: number, color: string, maxWidth: number, tokens: ReturnType<typeof presentationTokens>, fixedWidth = false): SceneElement {
   const lines = value.split("\n");
-  return { ...base(id, "text", { x, y, width: Math.min(maxWidth, Math.max(20, ...lines.map((line) => widthOf(line, size)))), height: Math.max(1, lines.length) * size * LINE_HEIGHT }, tokens), text: value, originalText: value, fontSize: size, fontFamily: 5, textAlign: "left", verticalAlign: "top", containerId: null, autoResize: false, lineHeight: LINE_HEIGHT, strokeColor: color };
+  // fixedWidth=true：宽度固定取 maxWidth（居中排版用，调用方负责把 x 对准容器左缘）
+  const width = fixedWidth ? maxWidth : Math.min(maxWidth, Math.max(20, ...lines.map((line) => widthOf(line, size))));
+  return { ...base(id, "text", { x, y, width, height: Math.max(1, lines.length) * size * LINE_HEIGHT }, tokens), text: value, originalText: value, fontSize: size, fontFamily: 5, textAlign: "left", verticalAlign: "top", containerId: null, autoResize: false, lineHeight: LINE_HEIGHT, strokeColor: color };
 }
 function arrow(id: string, from: Point, to: Point, startNodeId: string, endNodeId: string, tokens: ReturnType<typeof presentationTokens>): SceneElement {
   const x = Math.min(from.x, to.x), y = Math.min(from.y, to.y);
@@ -119,12 +121,18 @@ function positions(graph: KnowledgeGraph, layout: LayoutKind, tokens: ReturnType
   const heightOf = (node: KnowledgeNode) => cardHeight(node, width, tokens);
   if (layout === "debate-grid") {
     // 观点对照版式：中心问题胶囊 + 观点卡 2×2 网格（列内垂直堆叠）+ 共识卡底部通栏
-    // 问题/强调卡（id=question 或 emphasis=high）不进网格，由 render() 画成中心胶囊
+    // 只有 id=question 的中心问题节点画成胶囊；emphasis=high 是普通卡加粗描边（标重点不消失）
     const boxes: Box[] = [];
     const groupOf = (nodeId: string) => graph.groups.findIndex((grp) => grp.nodeIds.includes(nodeId));
     const viewpoints: number[] = [], consensus: number[] = [];
+    // 问题节点判定：compat 转换的图固定 id="question"；LLM 直接产的图（无固定 id）取第一个 emphasis=high 的节点
+    let capsuleId = nodes.find((n) => n.id === "question")?.id;
+    if (capsuleId === undefined) {
+      const hi = nodes.findIndex((n) => n.emphasis === "high");
+      if (hi >= 0) capsuleId = nodes[hi].id;
+    }
     nodes.forEach((node, i) => {
-      if (node.id === "question" || node.emphasis === "high") { boxes[i] = { x: 0, y: 0, width: 0, height: 0 }; return; } // 占位，render 覆盖
+      if (node.id === capsuleId) { boxes[i] = { x: 0, y: 0, width: 0, height: 0 }; return; } // 占位，render 覆盖
       const groupId = graph.groups[groupOf(node.id)]?.id;
       if (node.group === "consensus" || groupId === "consensus") consensus.push(i);
       else viewpoints.push(i);
@@ -251,15 +259,22 @@ function render(graph: KnowledgeGraph, layout: LayoutKind): SceneElement[] {
   const elements = header(graph, tokens);
   const boxes = positions(graph, layout, tokens);
   // 卡片链接：节点 citation id → 真实 URL（没有引用的节点不带链接）
+  // metadata.linksEnabled === false 时（看山助手「去除超链接」）所有卡片不带链接；来源数据保留在底部索引
+  const linksEnabled = graph.metadata?.linksEnabled !== false;
   const urlByCitationId = new Map(graph.citations.map((citation) => [citation.id, citation.url]));
   const nodeLink = (node: KnowledgeNode): string | null => {
+    if (!linksEnabled) return null;
     for (const id of node.citations) {
       const url = urlByCitationId.get(id);
       if (url) return url;
     }
     return null;
   };
-  const isCapsuleNode = layout === "debate-grid" ? (node: KnowledgeNode) => node.id === "question" || node.emphasis === "high" : () => false;
+  // 与 positions() 同一判定：id=question 优先，否则第一个 emphasis=high（LLM 直产图）
+  const capsuleNodeId = layout === "debate-grid"
+    ? (graph.nodes.slice(0, 12).find((n) => n.id === "question") ?? graph.nodes.slice(0, 12).find((n) => n.emphasis === "high"))?.id
+    : undefined;
+  const isCapsuleNode = layout === "debate-grid" ? (node: KnowledgeNode) => node.id === capsuleNodeId : () => false;
   boxes.forEach((box, i) => {
     if (isCapsuleNode(graph.nodes[i])) return; // 中心胶囊在下方单独渲染
     // swimlane：节点卡用白色底 + 泳道色描边，浮在彩色泳道框上（旧学习路线版式）
@@ -282,7 +297,7 @@ function render(graph: KnowledgeGraph, layout: LayoutKind): SceneElement[] {
       ...(capsuleIdx >= 0 ? [{ ...text("debate-capsule-text", capsule.x + 18, capsule.y + 16, qText, 18, tokens.palette.accentStroke, qW - 36, tokens), textAlign: "center" }] : []),
     );
     // 观点卡 → 胶囊的汇聚曲线箭头（旧观点图手法：两端点分别取卡片/胶囊边缘交点，弧线不穿卡）
-    const capsuleNodeId = capsuleIdx >= 0 ? graph.nodes[capsuleIdx].id : "question";
+    const linkTargetId = capsuleNodeId ?? "question";
     const edgePoint = (from: Box, to: Box): { start: Point; end: Point } => {
       const cx = from.x + from.width / 2, cy = from.y + from.height / 2;
       const tx = to.x + to.width / 2, ty = to.y + to.height / 2;
@@ -299,7 +314,7 @@ function render(graph: KnowledgeGraph, layout: LayoutKind): SceneElement[] {
       if (isCapsuleNode(graph.nodes[i])) return;
       const { start, end } = edgePoint(box, capsule);
       const bend = (box.x + box.width / 2 < capsule.x + capsule.width / 2 ? 1 : -1) * 0.12;
-      elements.push(curveArrow(`debate-link-${i}`, start, end, graph.nodes[i].id, capsuleNodeId, tokens, bend));
+      elements.push(curveArrow(`debate-link-${i}`, start, end, graph.nodes[i].id, linkTargetId, tokens, bend));
     });
   }
   if (layout === "evidence-tree") {
@@ -327,7 +342,22 @@ function render(graph: KnowledgeGraph, layout: LayoutKind): SceneElement[] {
         ? { start: { x: root.x + root.width, y: rootCy }, end: { x: child.x, y: childCy } }
         : { start: { x: root.x, y: rootCy }, end: { x: child.x + child.width, y: childCy } };
     };
-    elements.unshift({ ...base("evidence-root", "ellipse", root, tokens), backgroundColor: tokens.palette.accentFill, strokeColor: tokens.palette.accentStroke }, text("evidence-root-text", root.x + 30, root.y + 35, wrap(graph.title, tokens.keyFindingSize, 360, 2), tokens.keyFindingSize, tokens.palette.accentStroke, 360, tokens));
+    // 中心椭圆内文字垂直水平居中（原来固定 +30/+35 偏移，标题换行/密度变化时偏上）
+    const rootTitle = wrap(graph.title, tokens.keyFindingSize, 280, 2);
+    const rootTextLines = rootTitle.split("\n").length;
+    elements.unshift(
+      { ...base("evidence-root", "ellipse", root, tokens), backgroundColor: tokens.palette.accentFill, strokeColor: tokens.palette.accentStroke },
+      {
+        ...text(
+          "evidence-root-text",
+          root.x + (root.width - 280) / 2,
+          root.y + (root.height - rootTextLines * tokens.keyFindingSize * LINE_HEIGHT) / 2,
+          rootTitle, tokens.keyFindingSize, tokens.palette.accentStroke, 280, tokens, true,
+        ),
+        textAlign: "center",
+        verticalAlign: "middle",
+      },
+    );
     graph.nodes.slice(0, 12).forEach((node, i) => {
       const child = boxes[i];
       const { start, end } = mindmap ? mindmapAnchor(child) : anchors(root, child);

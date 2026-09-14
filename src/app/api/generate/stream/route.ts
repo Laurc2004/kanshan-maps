@@ -3,6 +3,7 @@ import { zhihuSearch } from "@/lib/zhihu";
 import { extractViewpoints } from "@/lib/viewpoints";
 import { buildRoadmapMessages, parseRoadmapJson } from "@/lib/roadmap";
 import { runHarness, resolveGenerationPath } from "@/lib/harness/executor";
+import { viewpointToKnowledgeGraph, roadmapToKnowledgeGraph } from "@/lib/harness/compat";
 import { normalizeSearchItem } from "@/lib/harness/sources";
 import { buildSummaryMessages, parseSummaryJson } from "@/lib/summary";
 
@@ -170,19 +171,21 @@ export async function POST(req: NextRequest) {
         } else if (userMode === "roadmap") {
           send("status", { text: `正在从 ${items.length} 条回答里提炼学习路径…` });
           const raw = await runEngine(engineCfg, buildRoadmapMessages(q, items));
-          const graph = parseRoadmapJson(raw, q, items);
+          // 统一出口：与摘要一致，前端只收 KnowledgeGraph（渲染器永远一套）
+          const graph = roadmapToKnowledgeGraph(parseRoadmapJson(raw, q, items));
           send("status", { text: "正在铺设学习路线图…" });
           cache.set(cacheKey, { graph, items, ts: Date.now() });
           send("graph", { graph, mode: "roadmap", cached: false, sources: items.length });
         } else {
           send("status", { text: `正在分析 ${items.length} 条回答的观点立场…` });
-          const graph = await extractViewpoints(q, items, engineCfg);
-          if (graph.viewpoints.length === 0) {
+          const viewpointGraph = await extractViewpoints(q, items, engineCfg);
+          if (viewpointGraph.viewpoints.length === 0) {
             send("error", { error: "这些内容观点太分散，暂时无法归纳立场，换个更具体的问题试试" });
             controller.close();
             return;
           }
           send("status", { text: "正在绘制知识地图…" });
+          const graph = viewpointToKnowledgeGraph(viewpointGraph);
           cache.set(cacheKey, { graph, items, ts: Date.now() });
           send("graph", { graph, mode: "viewpoint", cached: false, sources: items.length });
         }

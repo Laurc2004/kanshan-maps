@@ -17,7 +17,7 @@ import SourceIndex from "@/components/SourceIndex";
 import { BoardControls } from "@/components/BoardControls";
 import ProfileCenter from "@/components/ProfileCenter";
 import { collectKnowledgeSources } from "@/lib/knowledge-assets";
-import { applyPalette } from "@/lib/presentation-controls";
+import { applyPalette, recolorElements } from "@/lib/presentation-controls";
 import { deleteBoard, listSavedBoards, saveBoard, type SavedBoard } from "@/lib/local-library";
 import { addWatermark } from "@/lib/share";
 import type { PaletteId } from "@/lib/harness/types";
@@ -233,11 +233,8 @@ export default function Home() {
 
   const renderGraph = useCallback(async (g: GraphState, followed?: Set<string>, m: Mode = "compare") => {
     const layout = await import("@/lib/excalidraw-layout");
-    const elements = (
-      m === "roadmap" && "question" in g
-        ? layout.graphToScene(g, followed ?? followeesRef.current)
-        : layout.adaptiveGraphToScene(g, followed ?? followeesRef.current)
-    ) as never[];
+    // 全站一种图结构（KnowledgeGraph）+ 一套渲染器：生成/Agent/缓存出口均已归一
+    const elements = layout.adaptiveGraphToScene(g, followed ?? followeesRef.current) as never[];
     // 新图覆盖旧缓存元素
     try {
       sessionStorage.removeItem(ELEMENTS_KEY);
@@ -556,26 +553,18 @@ export default function Home() {
   const changePalette = useCallback((palette: PaletteId) => {
     if (!graph) return;
     try {
-      const next = applyPalette(graph, palette);
+      // 换色 = 只改颜色：直接在场景元素上按颜色值映射，不重渲染、不动结构/坐标/id，
+      // 用户手动排版原样保留（重渲染会切换渲染器导致结构全变，已踩坑）
+      const sceneEls = (apiRef.current?.getSceneElements() ?? []) as unknown as Record<string, unknown>[];
+      if (sceneEls.length > 0) {
+        apiRef.current?.updateScene({ elements: recolorElements(sceneEls, palette) as never });
+      }
+      // graph 只更新调色板标记（不动节点结构），供下次持久化/保存画板使用
+      const next = "presentation" in graph
+        ? { ...graph, presentation: { ...graph.presentation, palette } }
+        : (() => { try { return applyPalette(graph, palette); } catch { return graph; } })();
       setGraph(next);
       graphRef.current = next;
-      // S3：换配色不重排版式 —— 用同一布局器重新生成元素，但按元素 id 把旧场景坐标映射回去
-      // （同 applyAgentGraph 的局部更新手法），只换色/样式，保留用户手动排版
-      (async () => {
-        const layout = await import("@/lib/excalidraw-layout");
-        const fresh = (
-          graphMode === "roadmap" && "question" in next
-            ? layout.graphToScene(next as unknown as ViewpointGraph, followeesRef.current)
-            : layout.adaptiveGraphToScene(next, followeesRef.current)
-        ) as { id?: string; x?: number; y?: number }[];
-        const old = (apiRef.current?.getSceneElements() ?? []) as unknown as { id?: string; x?: number; y?: number }[];
-        const oldPos = new Map(old.map((el) => [el.id, { x: el.x, y: el.y }]));
-        const merged = fresh.map((el) => {
-          const pos = el.id ? oldPos.get(el.id) : undefined;
-          return pos ? { ...el, x: pos.x, y: pos.y } : el;
-        });
-        apiRef.current?.updateScene({ elements: merged as never });
-      })();
       const boardTitle = "question" in next ? String(next.question) : "nodes" in next ? String(next.title) : String((next as unknown as { topic?: string; title?: string }).topic ?? "看山图");
       persistBoard(next, graphMode, boardTitle, items);
     }
@@ -635,14 +624,10 @@ export default function Home() {
         geometryChanged ||
         appliedLabels === undefined;
       if (!structural && apiRef.current) {
-        // 只更新文字/样式：用同一布局器重新生成元素，但保留旧坐标
+        // 只更新文字/样式：同一套渲染器重生成元素，按 id 保留旧坐标
         (async () => {
           const layout = await import("@/lib/excalidraw-layout");
-          const fresh = (
-            nextMode === "roadmap" && "question" in g
-              ? layout.graphToScene(g, followeesRef.current)
-              : layout.adaptiveGraphToScene(g, followeesRef.current)
-          ) as { id?: string; x?: number; y?: number }[];
+          const fresh = layout.adaptiveGraphToScene(g, followeesRef.current) as { id?: string; x?: number; y?: number }[];
           const old = (apiRef.current?.getSceneElements() ?? []) as unknown as { id?: string; x?: number; y?: number }[];
           const oldPos = new Map(old.map((el) => [el.id, { x: el.x, y: el.y }]));
           const merged = fresh.map((el) => {
