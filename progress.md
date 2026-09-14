@@ -221,3 +221,8 @@
 - B4 换色变版式根因：legacy 渲染器 nid() 含 Date.now() 随机后缀，changePalette 按 id 映射坐标全 miss；改确定性 id（scope#seq+内容哈希+稳定 seed），回归测试断言两次渲染 id 逐元素相等
 - B5 SourceIndex max-w min(62vw,100%-16rem) 不与右下控件重叠
 - 验证：全量测试/tsc/lint/build 绿 + E2E（我的看山入口可见、换色无页面错误、来源索引与控件 no-overlap）；1a9bf05 已部署生产
+
+## Session 15 — 2026-09-14（收藏夹固定生成底栏）— complete
+- 收藏夹操作区从列表尾部改为面板固定底栏（shrink-0 border-t，不随列表滚动），单个「生成 · 已选 N 篇」按钮
+- 点击弹 GenerateModeDialog 三选一：观点对照 / 学习路线 / 文章摘要（新支持 compare 模式从收藏夹生成）
+- 验证：tsc/lint/build 绿；E2E 主流程生成无回归（登录态交互由编译保证）；1aed96c 已部署生产
