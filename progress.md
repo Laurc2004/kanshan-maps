@@ -1,7 +1,8 @@
-## Session 26 — 2026-09-15（Phase 29: 登录门禁）— complete
-- 目标：提高登录率——未登录用户点击核心功能时弹引导登录弹窗，只有登录后体验全部功能；纯前端控制（me.loggedIn 来自 /api/auth/me），浏览不拦。
-- 改动：新增 src/components/LoginPrompt.tsx（hello.gif + 触发功能名 + 解锁点清单 + 登录 CTA + 先随便看看）；page.tsx 加 requireLogin 门禁接 generate/findAnswers/我的看山（原直接跳登录统一改弹窗）；AgentPanel 加 loggedIn/onRequireLogin，send 前拦截。
-- 验证：tsc 0 错；lint 0 error（5 既有 warning）；node --test 190（184 pass / 0 fail / 6 skip）；build 过；diff check 净。E2E（/tmp/e2e-login-gate.cjs，dev:3005 未登录）12 断言全 PASS：四处入口（一键看山/找回答/我的看山/助手发送）弹窗出现且标注功能名、可关闭、页面不跳走、未触发生成；热榜/素材栏浏览不受限；0 pageerror。临时脚本验证后删除。
+## Session 26 — 2026-09-15（Phase 29: 强制登录墙）— complete
+- 目标：提高登录率——打开网站未登录即弹登录墙，直至登录前不可关闭；纯前端控制（me.loggedIn 来自 /api/auth/me）。
+- 方案迭代：初版做成「点核心功能才弹、可关闭」的门禁被用户否掉（要求打开网站直接弹且不可关闭），按用户要求撤销重写为本版；登录墙遮罩 z-100 盖住全工作台，无关闭出口，唯一动作是去知乎登录。
+- 改动：新增 src/components/LoginPrompt.tsx（hello.gif + 产品一句话 + 解锁点清单 + 登录 CTA，无关闭按钮/遮罩点击不关）；page.tsx 加 meLoaded（me 返回前不弹防闪弹），meLoaded && !me.loggedIn 时渲染登录墙；AgentPanel 无改动（登录墙全局覆盖后无需面板内拦截）。
+- 验证：tsc 0 错；lint 0 error；node --test 190（184 pass / 0 fail / 6 skip）；build 过；diff check 净。E2E（/tmp/e2e-login-wall.cjs，dev:3005）：未登录进入即弹墙、无「先随便看看」关闭按钮、点遮罩与 Esc 均不关闭、登录按钮 href=/api/auth/login、0 pageerror，全部 PASS。临时脚本验证后删除。
 - 交付：commit + push → Vercel 生产验证。
 
 ## Session 24 — 2026-09-14（知乎黑客松提交物料包）— in_progress

@@ -400,12 +400,11 @@
 - ADD_NODE_RE 的 `加一` 前缀误吞「把第一个立场标为重点」（EMPHASIZE 回归）→ 拆成 `加一(点|条|个|张)` 独立分支 + ADD_NODE_RE 让位 EMPHASIZE/RENAME
 - add_edge 恢复数据边时只清 removedEdges 没补回 graph.edges（重渲染仍不画）→ 恢复时非装饰边补回 edges
 
-## Phase 29: 登录门禁（未登录引导弹窗）— status: complete
-背景：为提高登录率（黑客松登录数计入人气奖），未登录用户点击核心功能时弹引导登录弹窗；纯前端控制，不拦浏览。
-- [x] T1 新增 src/components/LoginPrompt.tsx：刘看山 hello + 「登录后体验完整功能」+ 触发功能名 + 登录后解锁点（关注答主高亮/收藏夹/我的看山）+「使用知乎账号登录」→ /api/auth/login +「先随便看看」关闭
-- [x] T2 page.tsx：requireLogin(feature) 门禁（me.loggedIn 为 false 时 setAuthGate 弹窗并拦截）；接入 generate（生成知识地图）、findAnswers（找回答）、我的看山按钮（原直接跳登录改为弹窗，体验统一）
-- [x] T3 AgentPanel：新增 loggedIn/onRequireLogin props，send 前未登录直接触发外层弹窗（消息不发送）；page.tsx 传入
-- [x] T4 验证：tsc 0 错 / lint 0 error（5 既有 warning）/ 190 tests（184 pass 0 fail 6 skip）/ build 过 / diff check 净；E2E dev:3005 未登录 12 断言全 PASS（生成/找回答/我的看山/助手发送四处弹窗均出现且标注功能名、可关闭、页面不跳转、浏览类功能不受限、0 pageerror）；浏览热榜/素材栏/画板空状态不拦截
+## Phase 29: 强制登录墙 — status: complete
+背景：提高登录率（黑客松登录数计入人气奖）。打开网站即弹登录墙，直至登录前不可关闭；纯前端控制。
+- [x] T1 新增 src/components/LoginPrompt.tsx：全屏遮罩（z-100 盖住整个工作台），刘看山 hello + 产品一句话 + 登录解锁点清单 +「使用知乎账号登录」→ /api/auth/login；无关闭按钮、点遮罩不关闭，唯一出口是登录
+- [x] T2 page.tsx：meLoaded 加载态（/api/auth/me 返回前不弹，防已登录用户被闪弹/网络异常误弹）；meLoaded && !me.loggedIn 时渲染登录墙
+- [x] T3 验证：tsc 0 错 / lint 0 error / 190 tests（184 pass 0 fail 6 skip）/ build 过 / diff check 净；E2E dev:3005 断言全 PASS（未登录进入即弹墙、无关闭按钮、点遮罩/Esc 不关闭、登录按钮指向 /api/auth/login、0 pageerror）
 
 ## Phase 17: 双模式 Harness + Agent 2.0 + 个性化实施 — status: complete
 - [x] A 双模式收缩（compare/roadmap，隐藏 auto）
