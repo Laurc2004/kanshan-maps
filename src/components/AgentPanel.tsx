@@ -44,6 +44,8 @@ export default function AgentPanel({
   onClose,
   progress,
   sessionId,
+  loggedIn = true,
+  onRequireLogin,
 }: {
   graph: AgentGraph | null;
   engine: { id: string; baseURL?: string; apiKey?: string; model?: string };
@@ -52,6 +54,8 @@ export default function AgentPanel({
   onClose: () => void;
   progress?: HarnessProgress | null;
   sessionId: string;
+  loggedIn?: boolean; // 未登录时对话发送被外层登录引导弹窗拦截（纯前端控制）
+  onRequireLogin?: () => void;
 }) {
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState("");
@@ -90,6 +94,10 @@ export default function AgentPanel({
     const text = (preset ?? input).trim();
     const g = graphRef.current;
     if (!text || thinking || busy) return;
+    if (!loggedIn) {
+      onRequireLogin?.();
+      return;
+    }
     // 没有图时不报服务器错误，直接在对话里友好提示
     if (!g) {
       setMessages((m) => [

@@ -1,3 +1,9 @@
+## Session 26 — 2026-09-15（Phase 29: 登录门禁）— complete
+- 目标：提高登录率——未登录用户点击核心功能时弹引导登录弹窗，只有登录后体验全部功能；纯前端控制（me.loggedIn 来自 /api/auth/me），浏览不拦。
+- 改动：新增 src/components/LoginPrompt.tsx（hello.gif + 触发功能名 + 解锁点清单 + 登录 CTA + 先随便看看）；page.tsx 加 requireLogin 门禁接 generate/findAnswers/我的看山（原直接跳登录统一改弹窗）；AgentPanel 加 loggedIn/onRequireLogin，send 前拦截。
+- 验证：tsc 0 错；lint 0 error（5 既有 warning）；node --test 190（184 pass / 0 fail / 6 skip）；build 过；diff check 净。E2E（/tmp/e2e-login-gate.cjs，dev:3005 未登录）12 断言全 PASS：四处入口（一键看山/找回答/我的看山/助手发送）弹窗出现且标注功能名、可关闭、页面不跳走、未触发生成；热榜/素材栏浏览不受限；0 pageerror。临时脚本验证后删除。
+- 交付：commit + push → Vercel 生产验证。
+
 ## Session 24 — 2026-09-14（知乎黑客松提交物料包）— in_progress
 - 用户确认视觉方向（知乎蓝 + 纸感米白 + 手绘知识地图 + 刘看山）；图片生成 gpt-image-2 服务端 502（unknown provider for model gpt-5.4-mini，为上游路由错误），用户指示图片暂缓。
 - 计划书第一版被用户否掉（不能突出重点），按用户要求以 README 为基础重写：保留对比表、评审维度对照、Harness 架构图、190 测试等硬数据，新增「一分钟看懂」「评委三分钟体验路径」等抓眼球结构 → `~/Desktop/一图看山-知乎黑客松提交包/一图看山-产品说明计划书.md`

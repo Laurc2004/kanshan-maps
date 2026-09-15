@@ -16,6 +16,7 @@ import HarnessStatus from "@/components/HarnessStatus";
 import SourceIndex from "@/components/SourceIndex";
 import { BoardControls } from "@/components/BoardControls";
 import ProfileCenter from "@/components/ProfileCenter";
+import LoginPrompt from "@/components/LoginPrompt";
 import { collectKnowledgeSources } from "@/lib/knowledge-assets";
 import { applyPalette, recolorElements } from "@/lib/presentation-controls";
 import { deleteBoard, listSavedBoards, saveBoard, type SavedBoard } from "@/lib/local-library";
@@ -81,6 +82,16 @@ export default function Home() {
   const [favlistItems, setFavlistItems] = useState<SearchResultItem[]>([]);
   const [selectedFavlistIds, setSelectedFavlistIds] = useState<Set<string>>(new Set());
   const [authNotice, setAuthNotice] = useState<string | null>(null);
+  const [authGate, setAuthGate] = useState<string | null>(null); // 未登录引导弹窗（值为触发功能名）
+  // 登录门禁：未登录用户点击核心功能时弹引导登录弹窗（纯前端控制），返回 true 表示已拦截
+  const requireLogin = useCallback(
+    (feature: string) => {
+      if (me.loggedIn) return false;
+      setAuthGate(feature);
+      return true;
+    },
+    [me.loggedIn]
+  );
 
   const apiRef = useRef<ExcalidrawImperativeAPI | null>(null);
   const pendingRef = useRef<unknown[] | null>(null);
@@ -295,6 +306,7 @@ export default function Home() {
   const generate = useCallback(
     async (picked?: SearchResultItem[]) => {
       if (!question.trim() || loading) return;
+      if (requireLogin("生成知识地图")) return;
       setLoading(true);
       setGenerating(true); // 画板进入生成态
       setBoardMounted(false); // 清空旧画板，全屏显示生成态
@@ -465,7 +477,7 @@ export default function Home() {
       setGenerating(false);
     }
     },
-    [question, loading, engine, mode, renderGraph, persistBoard]
+    [question, loading, engine, mode, renderGraph, persistBoard, requireLogin]
   );
 
   // 收藏夹生成：question/mode/pendingItems 落定后自动触发
@@ -483,6 +495,7 @@ export default function Home() {
   // 只找回答不生成（自选素材流程第一步）：独立 searching 态，画板和生成按钮保持不变
   const findAnswers = useCallback(async () => {
     if (!question.trim() || searching) return;
+    if (requireLogin("找回答")) return;
     setSearching(true);
     setStatus("正在搜索知乎回答…");
     try {
@@ -504,7 +517,7 @@ export default function Home() {
     } finally {
       setSearching(false);
     }
-  }, [question, searching]);
+  }, [question, searching, requireLogin]);
 
   const clearBoard = useCallback(() => {
     const reset = requestClearBoard(true);
@@ -745,7 +758,7 @@ export default function Home() {
             <button
               onClick={() => {
                 if (!me.loggedIn) {
-                  window.location.href = "/api/auth/login";
+                  setAuthGate("我的看山");
                   return;
                 }
                 setShowProfile((v) => !v);
@@ -1105,6 +1118,8 @@ export default function Home() {
             onClose={() => setShowAgent(false)}
             progress={harnessProgress}
             sessionId={boardSession}
+            loggedIn={me.loggedIn}
+            onRequireLogin={() => setAuthGate("看山助手")}
           />
         )}
         {!showAgent && (
@@ -1120,6 +1135,8 @@ export default function Home() {
           </button>
         )}
       </div>
+      {/* 未登录引导弹窗：点击核心功能时弹出，登录后体验全部功能 */}
+      {authGate && <LoginPrompt feature={authGate} onClose={() => setAuthGate(null)} />}
       {/* 热榜确认弹窗 */}
       {pendingHot && (
         <div
