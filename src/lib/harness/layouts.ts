@@ -105,29 +105,40 @@ function header(graph: KnowledgeGraph, tokens: ReturnType<typeof presentationTok
 // S5/S6：卡高按实际行数动态计算（上内边距 + 标题行高 + 标题正文间距 + 正文行高 + 下内边距），CARD_H 仅作最小值
 // P26：fullText=true 时标题/正文不截断（行数无上限），高度按完整内容撑开——debate 卡片专用
 function cardHeight(node: KnowledgeNode, width: number, tokens: ReturnType<typeof presentationTokens>, fullText = false): number {
-  const innerWidth = width - CARD_PAD * 2;
-  const titleLines = (fullText ? wrapLines(node.label, tokens.keyFindingSize, innerWidth).length : Math.min(TITLE_MAX_LINES, wrapLines(node.label, tokens.keyFindingSize, innerWidth).length)) || 1;
-  const bodyLines = node.description ? (fullText ? wrapLines(node.description, tokens.evidenceSize, innerWidth).length : Math.min(BODY_MAX_LINES, wrapLines(node.description, tokens.evidenceSize, innerWidth).length)) : 0;
-  const content = CARD_PAD + titleLines * tokens.keyFindingSize * LINE_HEIGHT
-    + (bodyLines ? TITLE_BODY_GAP + bodyLines * tokens.evidenceSize * LINE_HEIGHT + CARD_PAD : CARD_PAD);
-  return Math.max(CARD_H * tokens.cardScale, Math.ceil(content));
+  // P30：节点级样式覆盖（字号缩放/卡宽/最小卡高）与渲染口径一致，否则文字会超卡底
+  const style = nodeStyleOverrides(node);
+  const effWidth = style.width ?? width;
+  const fontScale = style.fontScale ?? 1;
+  const titleSize = Math.round(tokens.keyFindingSize * fontScale);
+  const bodySize = Math.round(tokens.evidenceSize * fontScale);
+  const innerWidth = effWidth - CARD_PAD * 2;
+  const titleLines = (fullText ? wrapLines(node.label, titleSize, innerWidth).length : Math.min(TITLE_MAX_LINES, wrapLines(node.label, titleSize, innerWidth).length)) || 1;
+  const bodyLines = node.description ? (fullText ? wrapLines(node.description, bodySize, innerWidth).length : Math.min(BODY_MAX_LINES, wrapLines(node.description, bodySize, innerWidth).length)) : 0;
+  const content = CARD_PAD + titleLines * titleSize * LINE_HEIGHT
+    + (bodyLines ? TITLE_BODY_GAP + bodyLines * bodySize * LINE_HEIGHT + CARD_PAD : CARD_PAD);
+  return Math.max(CARD_H * tokens.cardScale, style.height ?? 0, Math.ceil(content));
 }
 function card(node: KnowledgeNode, box: Box, index: number, tokens: ReturnType<typeof presentationTokens>, fillIndex = index, link?: string | null, fullText = false): SceneElement[] {
   const id = `node-${safeId(node.id)}`;
   // fillIndex < 0：白底卡（泳道内节点，描边用泳道色 = -fillIndex-1）
   const whiteFill = fillIndex < 0;
   const colorIdx = (whiteFill ? -fillIndex - 1 : fillIndex) % tokens.palette.fills.length;
-  const fill = whiteFill ? "#ffffff" : tokens.palette.fills[colorIdx];
-  const stroke = tokens.palette.strokes[colorIdx % tokens.palette.strokes.length];
+  // P30 微调：节点级样式覆盖（set_node_style 写入 metadata.styleOverrides）优先于调色板默认值
+  const style = nodeStyleOverrides(node);
+  const fill = style.fill ?? (whiteFill ? "#ffffff" : tokens.palette.fills[colorIdx]);
+  const stroke = style.stroke ?? tokens.palette.strokes[colorIdx % tokens.palette.strokes.length];
+  const fontScale = style.fontScale ?? 1;
+  const titleSize = Math.round(tokens.keyFindingSize * fontScale);
+  const bodySize = Math.round(tokens.evidenceSize * fontScale);
   const innerWidth = box.width - CARD_PAD * 2;
-  const title = fullText ? wrapLines(node.label, tokens.keyFindingSize, innerWidth).join("\n") : wrap(node.label, tokens.keyFindingSize, innerWidth, TITLE_MAX_LINES);
-  const body = fullText ? wrapLines(node.description, tokens.evidenceSize, innerWidth).join("\n") : wrap(node.description, tokens.evidenceSize, innerWidth, BODY_MAX_LINES);
+  const title = fullText ? wrapLines(node.label, titleSize, innerWidth).join("\n") : wrap(node.label, titleSize, innerWidth, TITLE_MAX_LINES);
+  const body = fullText ? wrapLines(node.description, bodySize, innerWidth).join("\n") : wrap(node.description, bodySize, innerWidth, BODY_MAX_LINES);
   const titleLineCount = title ? title.split("\n").length : 0;
   // 正文起点紧跟标题实际行数（与 cardHeight 的累计口径一致，确保文字不超卡底）
-  const bodyY = box.y + CARD_PAD + Math.max(1, titleLineCount) * tokens.keyFindingSize * LINE_HEIGHT + TITLE_BODY_GAP;
+  const bodyY = box.y + CARD_PAD + Math.max(1, titleLineCount) * titleSize * LINE_HEIGHT + TITLE_BODY_GAP;
   // P24：标题用深色（palette.title）保证层级对比，强调卡加粗描边；正文 palette.body
-  const elements = [{ ...base(id, "rectangle", box, tokens), backgroundColor: fill, strokeColor: stroke, strokeWidth: node.emphasis === "high" ? tokens.strokeWidth + 1 : tokens.strokeWidth, link: link ?? null, customData: { nodeId: node.id } }, text(`${id}-title`, box.x + CARD_PAD, box.y + CARD_PAD, title, tokens.keyFindingSize, tokens.palette.title, innerWidth, tokens)];
-  if (body) elements.push(text(`${id}-body`, box.x + CARD_PAD, bodyY, body, tokens.evidenceSize, tokens.palette.body, innerWidth, tokens));
+  const elements = [{ ...base(id, "rectangle", box, tokens), backgroundColor: fill, strokeColor: stroke, strokeWidth: node.emphasis === "high" ? tokens.strokeWidth + 1 : tokens.strokeWidth, link: link ?? null, customData: { nodeId: node.id } }, text(`${id}-title`, box.x + CARD_PAD, box.y + CARD_PAD, title, titleSize, tokens.palette.title, innerWidth, tokens)];
+  if (body) elements.push(text(`${id}-body`, box.x + CARD_PAD, bodyY, body, bodySize, tokens.palette.body, innerWidth, tokens));
   return elements;
 }
 function groupSlot(graph: KnowledgeGraph, nodeId: string, index: number): { group: number; slot: number } {
@@ -142,11 +153,54 @@ function stackY(cards: { index: number; height: number }[], startY: number, gap:
   for (const cardInfo of cards) { ys.set(cardInfo.index, y); y += cardInfo.height + gap; }
   return ys;
 }
-function positions(graph: KnowledgeGraph, layout: LayoutKind, tokens: ReturnType<typeof presentationTokens>): Box[] {
+// P30 微调：节点级样式覆盖（看山助手 set_node_style 写入 node.metadata.styleOverrides）
+export interface NodeStyleOverrides {
+  fill?: string;
+  stroke?: string;
+  fontScale?: number; // 0.7~1.5 字号缩放
+  width?: number;     // 绝对宽（120~600）
+  height?: number;    // 最小高（100~520）
+}
+export function nodeStyleOverrides(node: KnowledgeNode): NodeStyleOverrides {
+  const raw = node.metadata?.styleOverrides;
+  if (!raw || typeof raw !== "object") return {};
+  const out: NodeStyleOverrides = {};
+  const o = raw as Record<string, unknown>;
+  if (typeof o.fill === "string" && /^#[0-9a-fA-F]{3,8}$/.test(o.fill)) out.fill = o.fill;
+  if (typeof o.stroke === "string" && /^#[0-9a-fA-F]{3,8}$/.test(o.stroke)) out.stroke = o.stroke;
+  if (typeof o.fontScale === "number" && Number.isFinite(o.fontScale)) out.fontScale = Math.min(1.5, Math.max(0.7, o.fontScale));
+  if (typeof o.width === "number" && Number.isFinite(o.width)) out.width = Math.min(600, Math.max(120, o.width));
+  if (typeof o.height === "number" && Number.isFinite(o.height)) out.height = Math.min(520, Math.max(100, o.height));
+  return out;
+}
+// P30 微调：元素位置偏移（看山助手 move_element 写入 graph.metadata.elementOffsets[nodeId]）
+export interface ElementOffset { dx: number; dy: number; }
+export function elementOffsets(graph: KnowledgeGraph): Map<string, ElementOffset> {
+  const map = new Map<string, ElementOffset>();
+  const raw = graph.metadata?.elementOffsets;
+  if (!raw || typeof raw !== "object") return map;
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (value && typeof value === "object") {
+      const { dx, dy } = value as { dx?: unknown; dy?: unknown };
+      if (typeof dx === "number" && Number.isFinite(dx) && typeof dy === "number" && Number.isFinite(dy)) {
+        map.set(key, { dx: Math.max(-800, Math.min(800, dx)), dy: Math.max(-800, Math.min(800, dy)) });
+      }
+    }
+  }
+  return map;
+}
+// P30 微调：全局间距系数（看山助手 set_spacing 写入 graph.metadata.spacingScale）
+export function spacingScale(graph: KnowledgeGraph): number {
+  const raw = graph.metadata?.spacingScale;
+  return typeof raw === "number" && Number.isFinite(raw) ? Math.min(1.6, Math.max(0.6, raw)) : 1;
+}
+
+function positionsBase(graph: KnowledgeGraph, layout: LayoutKind, tokens: ReturnType<typeof presentationTokens>): Box[] {
   // 展示上限与综合目标对齐（6-12 节点可读且不凑数）；超过的节点由 pruneFillerNodes 先行裁剪
   const nodes = graph.nodes.slice(0, 12);
   const scale = tokens.cardScale;
-  const width = CARD_W * scale, gap = 80 * tokens.spacing;
+  const spacingK = spacingScale(graph); // P30：全局间距微调（0.6~1.6），叠加在 density 之上
+  const width = CARD_W * scale, gap = 80 * tokens.spacing * spacingK;
   const heightOf = (node: KnowledgeNode) => cardHeight(node, width, tokens);
   if (layout === "debate-grid") {
     // 观点对照版式（P25）：中心问题胶囊 + 观点卡按组左右对立分列（组0=左列、组1=右列、其余组依次向下扩展列）
@@ -267,6 +321,43 @@ function positions(graph: KnowledgeGraph, layout: LayoutKind, tokens: ReturnType
   nodes.forEach((_, i) => cols[i % 2].push(i));
   const colYs = cols.map((col) => stackY(col.map((i) => ({ index: i, height: heightOf(nodes[i]) })), 210, 40));
   return nodes.map((node, i) => ({ x: 80 + (i % 2) * (width + 60), y: colYs[i % 2].get(i)!, width, height: heightOf(node) }));
+}
+
+// P30：布局坐标之上叠加看山助手的单卡微调偏移（move_element），保持确定性；
+// 单卡宽度覆盖（styleOverrides.width）在此统一应用——高度已由 cardHeight 按覆盖口径计算。
+// 碰撞防护：变宽的卡若压到右侧相邻列，把被压的列整体推开（保持对齐节奏、零重叠）
+function positions(graph: KnowledgeGraph, layout: LayoutKind, tokens: ReturnType<typeof presentationTokens>): Box[] {
+  const base = positionsBase(graph, layout, tokens);
+  const nodes = graph.nodes.slice(0, 12);
+  const offsets = elementOffsets(graph);
+  const anyOverrides = nodes.some((n) => nodeStyleOverrides(n).width !== undefined);
+  if (offsets.size === 0 && !anyOverrides) return base;
+  const boxes = base.map((box, i) => {
+    const node = nodes[i];
+    if (!node) return box;
+    const style = nodeStyleOverrides(node);
+    const width = style.width ?? box.width;
+    // 宽度变化时以左缘为锚（不改变卡列左对齐节奏），高度按覆盖口径重算
+    const height = cardHeight(node, box.width, tokens, layout === "debate-grid");
+    const off = offsets.get(node.id);
+    return { x: box.x + (off?.dx ?? 0), y: box.y + (off?.dy ?? 0), width, height };
+  });
+  if (!anyOverrides) return boxes;
+  // 推开被变宽卡压住的右侧卡：仅当与变宽卡垂直区间有重叠（同一行/邻近行）才算被压，
+  // 同列上下方的卡（垂直不重叠）不动——否则会把整列错推到右边
+  const changed = boxes
+    .map((box, i) => ({ box, i, delta: box.width - base[i].width }))
+    .filter((entry) => entry.delta > 0);
+  for (const { box } of changed) {
+    const need = box.x + box.width + 12;
+    for (let j = 0; j < boxes.length; j++) {
+      const other = boxes[j];
+      if (other === box) continue;
+      const verticalOverlap = other.y < box.y + box.height && other.y + other.height > box.y;
+      if (verticalOverlap && other.x > box.x && other.x < need) other.x = need;
+    }
+  }
+  return boxes;
 }
 
 // 边锚点按两卡相对位置动态选择，避免连线横穿卡片

@@ -24,6 +24,9 @@ const CHANGE_INSTRUCTION = `你是知识图编辑助手。根据用户意图输�
 - {"type":"set_presentation","patch":{"palette":"zhihu-blue|paper-pastel|research-mono|poster-bold|nature-notes","density":"compact|comfortable|spacious","stroke":"clean|sketch|marker","layout":"debate-grid|radial-map|timeline|swimlane-roadmap|cluster-board|evidence-tree"}}
 - {"type":"set_mode","mode":"summary"} 把 evidence-tree 版式切成思维导图（中心主题+左右分支）；{"type":"set_mode","mode":null} 还原为证据树
 - {"type":"set_links","enabled":false} 去除所有卡片上的原文超链接；{"type":"set_links","enabled":true} 恢复
+- {"type":"set_node_style","nodeId":"...","patch":{"fill":"#fff4e6","stroke":"#e8590c","fontScale":1.2,"width":420,"height":200}} ← 单卡微调：fill=底色/stroke=描边色（#RRGGBB）、fontScale=字号缩放(0.7~1.5)、width(120~600)/height(100~520)像素；patch 至少给一项
+- {"type":"move_element","nodeId":"...","dx":-60,"dy":0} ← 单卡微移：dx/dy 为像素偏移（左负右正、上负下正，单次 ≤800）；说「回到原位」时改用 reset:true
+- {"type":"set_spacing","scale":1.25} ← 全局卡片间距（0.6~1.6，大于1更松、小于1更紧）；恢复默认用 {"type":"set_spacing","reset":true}
 - {"type":"relayout","scope":"local|all"}
 规则：
 - nodeId/groupId 只能用下方给出的真实 ID，禁止编造
@@ -36,6 +39,8 @@ const CHANGE_INSTRUCTION = `你是知识图编辑助手。根据用户意图输�
 - 用户要「思维导图」时：当前版式已是 evidence-tree 就输出 set_mode=summary（不要再改 layout）；否则同时输出 set_presentation.layout=evidence-tree 和 set_mode=summary
 - 用户要「证据树/层级树」且当前已是思维导图（模式 summary）时：输出 set_mode=null（layout 已是 evidence-tree 就不用再改）
 - 用户要「去除/不要链接、超链接、跳转」时：输出 set_links，不要删除或改写任何节点内容
+- 用户要「某张卡改颜色/字大一点/卡大一点/移动位置/间距松紧」时：输出 set_node_style / move_element / set_spacing（微调类，数值必须在允许范围内）
+- 用户要微调但没说清目标（「这张卡」无指代）时：needClarify 追问是哪一张
 - 如果意图是 answer（只回答），输出 {"reply":"...","changes":[]}
 - 如果指代不明（比如「把它删掉」但不知道它是谁），输出 {"reply":"...","changes":[],"needClarify":["问题1","问题2"]}；但新增类请求（加卡片）不需要指代现有卡片，直接输出 add_node`;
 
@@ -88,9 +93,13 @@ export async function decideAgentAction(
   }
 
   // 5) clarify：指代不明——但新增/容器/连线类 structure 请求本就不需要指代现有卡片，只在确有目标缺失时才追问
+  // P30 修复：连线操作（去掉/恢复/连接）即使 targetIds 为空也不判 clarify——
+  // 用户可能说「胶囊到共识的连线」，模型 prompt 已教了 question→debate-consensus 等映射，让模型去解析
+  const isEdgeOp = /(去掉|去除|断开|删掉|删除|取消|不要).{0,10}(箭头|连线|连接线|关系线)|(箭头|连线).{0,4}(去掉|去除|断开|删掉|删除)|恢复.{0,4}(箭头|连线|连接线)/.test(message);
   const structureWithoutTargets =
     route.intent === "structure" &&
     route.targetIds.length === 0 &&
+    !isEdgeOp &&
     /删除|删掉|去掉|移除|合并|移动|断开/.test(message);
   if (route.intent === "clarify" || (route.confidence === "low" && (["emphasize", "rewrite"].includes(route.intent) || structureWithoutTargets))) {
     const examples = ctx.nodes.slice(0, 3).map((n) => `「${n.label}」`).join("、");

@@ -350,3 +350,71 @@ test("removedEdges hides debate capsule→consensus link and evidence-tree root 
   assert.ok(!scene.some((e) => e.id === "evidence-root-edge-1"), "root edge to n1 hidden");
   assert.ok(scene.some((e) => e.id === "evidence-root-edge-0"), "other root edges intact");
 });
+
+
+// P30 测试辅助：按 customData.nodeId 定位卡片元素（元素 id 带 hash 后缀，不直接匹配）
+function cardByNodeId(scene: Record<string, unknown>[], nodeId: string) {
+  return scene.find((e) => (e.customData as { nodeId?: string } | null)?.nodeId === nodeId) as { id: string; x: number; y: number; width: number; height: number; backgroundColor: string; strokeColor: string };
+}
+function titleOfCard(scene: Record<string, unknown>[], nodeId: string) {
+  const card = cardByNodeId(scene, nodeId);
+  return scene.find((e) => e.id === `${card.id}-title`) as { fontSize: number };
+}
+
+// ───── P30 自由微调渲染 ─────
+
+test("P30: node styleOverrides change card fill/stroke/fontSize in scene", () => {
+  const g = graph("cluster-board");
+  g.nodes[0].metadata = { styleOverrides: { fill: "#123456", stroke: "#abcdef", fontScale: 1.3 } };
+  const scene = knowledgeGraphToScene(g);
+  const card = cardByNodeId(scene, "n0");
+  assert.equal(card.backgroundColor, "#123456");
+  assert.equal(card.strokeColor, "#abcdef");
+  const title = titleOfCard(scene, "n0");
+  assert.ok(title.fontSize > 20, `fontScale applied: ${title.fontSize}`);
+});
+
+test("P30: elementOffsets shift card position without touching others", () => {
+  const plain = knowledgeGraphToScene(graph("cluster-board"));
+  const g = graph("cluster-board");
+  g.metadata = { elementOffsets: { n1: { dx: 150, dy: -80 } } };
+  const shifted = knowledgeGraphToScene(g);
+  const b0 = cardByNodeId(plain, "n1");
+  const b1 = cardByNodeId(shifted, "n1");
+  assert.equal(b1.x - b0.x, 150);
+  assert.equal(b1.y - b0.y, -80);
+  const other0 = cardByNodeId(plain, "n0");
+  const other1 = cardByNodeId(shifted, "n0");
+  assert.equal(other1.x, other0.x);
+});
+
+test("P30: spacingScale widens vertical gaps globally", () => {
+  const plain = knowledgeGraphToScene(graph("cluster-board"));
+  const g = graph("cluster-board");
+  g.metadata = { spacingScale: 1.5 };
+  const wide = knowledgeGraphToScene(g);
+  const gap = (scene: typeof plain, a: string, b: string) => {
+    const ea = cardByNodeId(scene, a);
+    const eb = cardByNodeId(scene, b);
+    return eb.y - (ea.y + ea.height);
+  };
+  assert.ok(gap(wide, "n0", "n1") > gap(plain, "n0", "n1"), `gap widened: ${gap(plain, "n0", "n1")} -> ${gap(wide, "n0", "n1")}`);
+});
+
+test("P30: overridden card width applies and stays collision-free", () => {
+  const g = graph("cluster-board");
+  g.nodes[0].metadata = { styleOverrides: { width: 500 } };
+  const scene = knowledgeGraphToScene(g);
+  const card = cardByNodeId(scene, "n0");
+  assert.equal(card.width, 500);
+  assert.deepEqual(substantiveCollisions(scene), []);
+});
+
+test("P30: fine-tuned scene still has all typed elements (no blank-board regression)", () => {
+  const g = graph("radial-map");
+  g.nodes[2].metadata = { styleOverrides: { fill: "#ff0000", fontScale: 1.2 } };
+  g.metadata = { elementOffsets: { n1: { dx: 60, dy: 60 } }, spacingScale: 1.3 };
+  const scene = knowledgeGraphToScene(g);
+  assert.ok(scene.length > 0);
+  for (const el of scene) assert.equal(typeof el.type, "string");
+});
