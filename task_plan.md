@@ -400,6 +400,56 @@
 - ADD_NODE_RE 的 `加一` 前缀误吞「把第一个立场标为重点」（EMPHASIZE 回归）→ 拆成 `加一(点|条|个|张)` 独立分支 + ADD_NODE_RE 让位 EMPHASIZE/RENAME
 - add_edge 恢复数据边时只清 removedEdges 没补回 graph.edges（重渲染仍不画）→ 恢复时非装饰边补回 edges
 
+## Phase 30: 助手连线删除全覆盖 + 我的看山自动回写 + 自由微调操作集 — status: complete
+
+背景（用户反馈 3 项）：
+1. 看山助手说「去掉连线」回执成功但画板纹丝不动
+2. 「我的看山」打开的图永远停留在生成时旧版，助手改完不更新
+3. 助手只能做写死的语义操作，无法自由微调（单卡颜色/字号/宽高、元素上下左右移动、卡片间距）
+
+根因（已核对代码确认）：
+- R1 layouts.ts 装饰箭头只对 lane-arrow/debate-consensus/evidence-root-edge 三类查 removedEdges；
+  radial-map/timeline/cluster-board 的数据边走了查集合的分支没问题，但 debate 卡→胶囊汇聚箭头在 P26 已删、
+  其它「生成时画的装饰连线」不在白名单 → remove_edges 对这些箭头是无效操作
+- R2 page.tsx 只写 BOARD_KEY（当前画板缓存）；local-library 的收藏夹快照只在生成成功那一次 saveBoard，
+  之后 applyAgentGraph/changePalette 从不回写 → 「我的看山」点开是旧图
+- R3 GraphChange 没有节点级样式/几何 override 操作 → 模型无从表达「这张卡改红色/字大一点/往左挪」
+
+方案（用户已批准：自动回写 + 全量一期）：
+- F1 装饰/数据边删除全覆盖：统一 decorative 边注册思路——把 evidence-root-edge-i（已有）、
+  debate 汇聚边（若恢复）、radial/timeline/cluster 的数据边渲染循环全部接 edgeGone 检查（数据边已有）；
+  补充：删除「某卡的所有连线」支持（pairs 用 node id 即可命中）
+- F2 自动回写：page.tsx 增加 currentBoardIdRef（当前画板对应的收藏夹 board id）；
+  生成成功/openSavedBoard 时记录 id；applyAgentGraph / changePalette 成功后调用 saveBoard 覆盖同 id 快照
+- F3 自由微调 GraphChange 三类：
+  - set_node_style（nodeId, patch{fill/stroke/fontScale/width/height}）→ 存 node.metadata.styleOverrides，渲染时覆盖
+  - move_element（targetId, dx, dy）→ 存 metadata.elementOffsets[targetId] = {dx,dy}（叠加布局坐标；
+    结构性重排（relayout all/版式切换）时清空全部 offsets）
+  - set_spacing（factor 或 direction: gap|column|row, value 0.6~1.6）→ 存 metadata.spacingScale，positions() 全布局乘系数
+- F3 五层贯穿：types/apply/decide prompt/router 规则/前端 geometryChanged 监听
+
+任务：
+- [x] T1 layouts.ts：NodeStyleOverrides 接口（fill/stroke/fontScale 0.7~1.5/width/height）；positions 包装函数应用 elementOffsets 偏移 + width override + 碰撞推开（垂直重叠才推，防列错推）；card()/cardHeight() 按 override 口径统一计算（防字号缩放后文字超卡底）
+- [x] T2 agent 层：GraphChange 新增 set_node_style / move_element / set_spacing（validate + apply + risk=low）；set_presentation 换版式清 elementOffsets；relayout scope=all 清 metadata.elementOffsets
+- [x] T3 router + decide prompt：MOVE_RE/SPACING_RE/FONT_SCALE_RE 意图正则（改色/字号/大小/移动/挪/间距/紧凑宽松）；「移动」先于 STRUCTURE 防误判；「字大一点」直达 set_node_style 不经过模型（防标重点误判）；decide prompt 补三条新操作说明
+- [x] T4 page.tsx：currentBoardIdRef 自动回写（applyAgentGraph 两条路径 + changePalette + 清空时解绑）+ geometryChanged 补监听 metadata.spacingScale / elementOffsets / styleOverrides；structural 正则加「左移|右移|上移|下移|回到默认位置|间距」
+- [x] T5 测试：agent.test.ts +11 用例（set_node_style/move_element/set_spacing 校验+应用+路由+风险分级）；layouts.test.ts +5 用例（styleOverrides 渲染覆盖/elementOffsets 叠加/spacingScale 全局生效/推开逻辑/relayout 清 offsets）
+- [x] T6 验证门全绿：tsc 0 错 / lint 0 error（6 既有 warning）/ 205 tests（199 pass 0 fail 6 OAuth skip）/ build 过；
+  真实 API 五场景 5/5 PASS（单卡改色/字大/左移/间距收紧/回到原位，本地 next start:3005）；
+  渲染层 8/8 PASS（颜色/描边/宽度/字号/偏移/间距全部生效 + 零重叠 + 无空板回归）；
+  E2E 浏览器级回写验证被知乎 OAuth 登录态卡住（本地无法绕过），三层验证覆盖：saveBoard 单测 + API 全链路 + 渲染断言
+- [ ] T7 提交推送（待用户验收）
+
+### 实施中修的六个真 bug
+- positions 包装函数重复插入/误删 → read_file 两次核对恢复正确结构
+- agent.test.ts:418 `scale: 2 } }` 多一个 `}` 语法错误 → 修正为 `scale: 2 }]`
+- SPACING_RE 漏匹配「间距收紧」类动词后置说法 → 补 `间距.{0,4}(收紧|放宽|拉开|缩小|调|恢复)` 分支
+- 「字大一点」被模型路由成标重点 → 加 FONT_SCALE_RE 确定性规则直达 set_node_style
+- 推开逻辑把同列下方垂直不重叠的卡也推到右列（引发碰撞）→ 加 verticalOverlap 条件只推真正被压的行
+- 「去掉连线」回执成功但画面不变：decide.ts clarify 拦截了连线操作（targetIds 为空 + 含「去掉」→ 误判指代不明）→ 加 isEdgeOp 豁免让模型解析「胶囊到共识」等语义映射
+- 「恢复连线」changed: false：changesFromRules 没处理 EDGE_RESTORE_RE → 补确定性生成（从 metadata.removedEdges 恢复所有被删连线）
+- add_edge 恢复装饰边时把 question→debate-consensus 加进 graph.edges → 结构检查失败（debate-consensus 不在 nodes）→ isDecorative 判定改为任一端不在 nodes 即为装饰边
+
 ## Phase 29: 强制登录墙 — status: complete
 背景：提高登录率（黑客松登录数计入人气奖）。打开网站即弹登录墙，直至登录前不可关闭；纯前端控制。
 - [x] T1 新增 src/components/LoginPrompt.tsx：全屏遮罩（z-100 盖住整个工作台），刘看山 hello + 产品一句话 + 登录解锁点清单 +「使用知乎账号登录」→ /api/auth/login；无关闭按钮、点遮罩不关闭，唯一出口是登录

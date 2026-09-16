@@ -21,6 +21,12 @@ const EDGE_ON_RE = /(连起来|连一下|加连线|加箭头|画条线|连接|�
 const EDGE_RESTORE_RE = /恢复.{0,4}(箭头|连线|连接线)/;
 // 大卡片容器：「一张大卡包住 A 和 B」「把这两点圈在一起/归为一组」
 const CONTAINER_RE = /(大卡|大卡片|大框|框|框起来|圈起来|圈在|包起来|包住|包裹|包含|归为一组|归到一组|放在一起|合并成一组|分成一组)/;
+// P30 微调：单卡移动（「把这张卡往左挪一点」「往上移 50」）
+const MOVE_RE = /(往|向|朝).{0,6}(左|右|上|下).{0,6}(挪|移|移动|偏移|挪动)|(挪|移动|移)一(点|下|些)|回到原位|回到默认位置|复位/;
+// P30 微调：全局间距（「卡片间距大一点/紧凑些/再松一点」）
+const SPACING_RE = /(卡片|元素|节点|图).{0,4}(间距|间隔|距离).{0,8}(大|小|宽|窄|松|紧|多|少|调)|间距(太|有点)?(大|小|宽|窄|松|紧)|间距.{0,4}(收紧|放宽|拉开|缩小|调|恢复)|(收紧|放宽|拉开|缩小).{0,6}(间距|间隔)|间距恢复(默认|正常)/;
+// P30 微调：单卡字号（「这张卡字大一点/字号调小」）——必须先于 EMPHASIZE（「放大」会命中「放大」关键词）
+const FONTSIZE_RE = /(字|文字|字号|字体)(体)?(太)?(大|小)一?(点|些|下)|(字号|字体|文字).{0,4}(调|改|放大|缩小|变大|变小|增大|减小)|(把|将).{0,12}(字|文字)(号)?.{0,6}(放大|变大|增大|缩小|变小|调小|调大)/;
 
 export interface RouteResult {
   intent: AgentIntent;
@@ -77,6 +83,17 @@ export function routeByRules(message: string, ctx: AgentContext): RouteResult | 
   }
   if (LINK_ON_RE.test(text)) {
     return { intent: "style", targetIds: [], confidence: "high", reason: "恢复卡片超链接" };
+  }
+  // P30 微调：单卡移动/全局间距——必须先于 ANSWER/STRUCTURE（「移动」会命中 STRUCTURE_RE 的「移动」）
+  if (MOVE_RE.test(text)) {
+    return { intent: "style", targetIds: targets, confidence: "high", reason: "单卡位置微调" };
+  }
+  if (SPACING_RE.test(text) && !STRUCTURE_RE.test(text)) {
+    return { intent: "style", targetIds: [], confidence: "high", reason: "全局间距微调" };
+  }
+  // P30 微调：单卡字号——先于 EMPHASIZE（「字大一点」里的「大」不该变成标重点）
+  if (FONTSIZE_RE.test(text)) {
+    return { intent: "style", targetIds: targets, confidence: targets.length > 0 ? "high" : "low", reason: "单卡字号微调" };
   }
   if (ANSWER_RE.test(text) && !REWRITE_RE.test(text) && !STRUCTURE_RE.test(text)) {
     return { intent: "answer", targetIds: targets, confidence: "high", reason: "解释型问题，不改图" };
@@ -158,6 +175,32 @@ export function changesFromRules(
     // 超链接开关（在版式/配色之前判定，「去掉链接」不会被误判成删内容或改样式）
     if (LINK_OFF_RE.test(text) && !LINK_ON_RE.test(text)) return [{ type: "set_links", enabled: false }];
     if (LINK_ON_RE.test(text)) return [{ type: "set_links", enabled: true }];
+    // P30 微调：单卡移动——「往左挪一点/往上移 50px」（target 由规则按 label/序数定位）
+    if (MOVE_RE.test(text)) {
+      if (/回到原位|回到默认位置|复位/.test(text) && route.targetIds.length > 0) {
+        return route.targetIds.map((id) => ({ type: "move_element" as const, nodeId: id, dx: 0, dy: 0, reset: true }));
+      }
+      const dirM = text.match(/(往|向|朝)\s*(左|右|上|下)\s*(?:移|挪|移动|偏移|挪动)?\s*(?:([0-9]+)\s*(?:px|像素)?)?/);
+      if (dirM && route.targetIds.length > 0) {
+        const dist = Math.min(400, Math.max(20, dirM[3] ? parseInt(dirM[3], 10) : 60));
+        const dx = dirM[2] === "左" ? -dist : dirM[2] === "右" ? dist : 0;
+        const dy = dirM[2] === "上" ? -dist : dirM[2] === "下" ? dist : 0;
+        return route.targetIds.map((id) => ({ type: "move_element" as const, nodeId: id, dx, dy }));
+      }
+      return null; // 方向/目标不全 → 交给模型
+    }
+    // P30 微调：全局间距——「间距大一点/收紧/放宽/恢复默认」
+    if (SPACING_RE.test(text) && !STRUCTURE_RE.test(text)) {
+      if (/恢复(默认|正常)/.test(text)) return [{ type: "set_spacing", reset: true }];
+      if (/(大|宽|松|多|放宽|拉开)/.test(text)) return [{ type: "set_spacing", scale: 1.25 }];
+      if (/(小|窄|紧|少|收紧|缩小)/.test(text)) return [{ type: "set_spacing", scale: 0.8 }];
+      return null;
+    }
+    // P30 微调：单卡字号——「字大一点/字号调小」（需定位到具体卡）
+    if (FONTSIZE_RE.test(text) && route.targetIds.length > 0) {
+      const up = /(大|放大|变大|增大|调大)/.test(text);
+      return route.targetIds.map((id) => ({ type: "set_node_style" as const, nodeId: id, patch: { fontScale: up ? 1.25 : 0.85 } }));
+    }
     // 思维导图/证据树切换必须 set_mode（metadata.mode）+ 对齐 layout；只改 presentation.layout
     // 会撞上摘要图的思维导图分支（evidence-tree + metadata.mode=summary）渲染不出来
     if (MINDMAP_RE.test(text)) {
@@ -180,6 +223,15 @@ export function changesFromRules(
   }
   if (route.intent === "structure" && /重新(排版|布局)|重排/.test(text)) {
     return [{ type: "relayout", scope: "all" }];
+  }
+  // P30 修复：恢复连线——从 metadata.removedEdges 里恢复所有被删的连线（确定性，不经过模型）
+  if (route.intent === "structure" && EDGE_RESTORE_RE.test(text)) {
+    const removed = Array.isArray(ctx.removedEdges) ? ctx.removedEdges : [];
+    if (removed.length === 0) return null; // 没有被删的连线，交给模型友好回答
+    return removed.map((key) => {
+      const [fromId, toId] = key.split("→");
+      return { type: "add_edge" as const, fromId, toId };
+    });
   }
   return null; // 需要模型生成 changes
 }

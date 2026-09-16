@@ -1,6 +1,6 @@
 // 原子执行与风险分级：任何一步失败整组不提交
 import type { KnowledgeGraph, PresentationSpec } from "../harness/types.ts";
-import type { GraphChange, Risk } from "./types.ts";
+import type { GraphChange, NodeStylePatch, Risk } from "./types.ts";
 
 const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
 
@@ -137,6 +137,29 @@ export function validateChanges(graph: KnowledgeGraph, changes: GraphChange[]): 
       case "set_links":
         need(typeof c.enabled === "boolean", "set_links 需要 enabled 布尔值");
         break;
+      case "set_node_style": {
+        need(nodeIds.has(c.nodeId), `未知节点: ${c.nodeId}`);
+        const p = c.patch;
+        need(!!p && typeof p === "object", "set_node_style 需要 patch 对象");
+        if (p?.fill !== undefined) need(/^#[0-9a-fA-F]{3,8}$/.test(String(p.fill)), "fill 必须是 #RRGGBB 颜色");
+        if (p?.stroke !== undefined) need(/^#[0-9a-fA-F]{3,8}$/.test(String(p.stroke)), "stroke 必须是 #RRGGBB 颜色");
+        if (p?.fontScale !== undefined) need(typeof p.fontScale === "number" && p.fontScale >= 0.7 && p.fontScale <= 1.5, "fontScale 须在 0.7~1.5");
+        if (p?.width !== undefined) need(typeof p.width === "number" && p.width >= 120 && p.width <= 600, "width 须在 120~600");
+        if (p?.height !== undefined) need(typeof p.height === "number" && p.height >= 100 && p.height <= 520, "height 须在 100~520");
+        need(p && (p.fill !== undefined || p.stroke !== undefined || p.fontScale !== undefined || p.width !== undefined || p.height !== undefined), "patch 至少包含一项");
+        break;
+      }
+      case "move_element": {
+        need(nodeIds.has(c.nodeId), `未知节点: ${c.nodeId}`);
+        need(typeof c.dx === "number" && Number.isFinite(c.dx), "dx 必须是数字");
+        need(typeof c.dy === "number" && Number.isFinite(c.dy), "dy 必须是数字");
+        need(Math.abs(c.dx) <= 800 && Math.abs(c.dy) <= 800, "单次移动不超过 800px");
+        break;
+      }
+      case "set_spacing": {
+        if (c?.reset !== true) need(typeof c.scale === "number" && c.scale >= 0.6 && c.scale <= 1.6, "scale 须在 0.6~1.6（或 reset=true 恢复默认）");
+        break;
+      }
       case "relayout":
         need(c.scope === "local" || c.scope === "all", "relayout scope 无效");
         break;
@@ -209,7 +232,8 @@ function applyOne(g: KnowledgeGraph, c: GraphChange): string {
       const key = edgeKey(c.fromId, c.toId);
       const removed = removedEdgeSet(g);
       // 装饰连线（lane-N→lane-M / question→debate-consensus / evidence-root→节点）不进 graph.edges，只清 removedEdges
-      const isDecorative = !g.nodes.some((n) => n.id === c.fromId);
+      // P30 修复：任一端不在 nodes 里即为装饰边（question 在 nodes 里但 debate-consensus 不在）
+      const isDecorative = !g.nodes.some((n) => n.id === c.fromId) || !g.nodes.some((n) => n.id === c.toId);
       // 泳道装饰箭头恢复时，连 remove_edges 派生的 lane-arrow-N 记录一起清掉
       const laneFrom = LANE_ARROW_RE.exec(c.fromId);
       if (laneFrom && LANE_ARROW_RE.test(c.toId)) removed.delete(edgeKey(`lane-arrow-${laneFrom[0].slice(5)}`, c.toId));
@@ -297,7 +321,13 @@ function applyOne(g: KnowledgeGraph, c: GraphChange): string {
         ...clone(c.patch),
         hierarchy: { ...g.presentation.hierarchy, ...(c.patch.hierarchy ?? {}) },
       } as PresentationSpec;
-      if (c.patch.layout) g.kind = c.patch.layout;
+      if (c.patch.layout) {
+        g.kind = c.patch.layout;
+        // 版式切换 = 全量重排：单卡微移偏移失效，清空防错位
+        if (g.metadata?.elementOffsets && Object.keys(g.metadata.elementOffsets).length > 0) {
+          g.metadata = { ...g.metadata, elementOffsets: {} };
+        }
+      }
       return c.patch.layout ? "已切换版式" : "已更新视觉风格";
     }
     case "set_mode": {
@@ -314,7 +344,51 @@ function applyOne(g: KnowledgeGraph, c: GraphChange): string {
       g.metadata = { ...g.metadata, linksEnabled: c.enabled };
       return c.enabled ? "已恢复卡片上的原文链接" : "已去除卡片上的原文链接（底部来源索引仍保留）";
     }
+    case "set_node_style": {
+      // P30 微调：单卡样式覆盖 → node.metadata.styleOverrides（渲染层 card()/cardHeight() 读取）
+      const n = findNode(g, c.nodeId)!;
+      const prev = (n.metadata?.styleOverrides ?? {}) as Partial<NodeStylePatch>;
+      n.metadata = { ...n.metadata, styleOverrides: { ...prev, ...c.patch } };
+      const parts: string[] = [];
+      if (c.patch.fill) parts.push("底色");
+      if (c.patch.stroke) parts.push("描边色");
+      if (c.patch.fontScale !== undefined) parts.push("字号");
+      if (c.patch.width !== undefined) parts.push("宽度");
+      if (c.patch.height !== undefined) parts.push("高度");
+      return `已调整「${n.label}」的${parts.join("、")}`;
+    }
+    case "move_element": {
+      // P30 微调：单卡位置偏移 → graph.metadata.elementOffsets[nodeId]（渲染层叠加在布局坐标上）
+      const n = findNode(g, c.nodeId)!;
+      const raw = (g.metadata?.elementOffsets ?? {}) as Record<string, { dx: number; dy: number }>;
+      if (c.reset) {
+        delete raw[c.nodeId];
+        g.metadata = { ...g.metadata, elementOffsets: raw };
+        return `「${n.label}」已回到默认位置`;
+      }
+      const prev = raw[c.nodeId] ?? { dx: 0, dy: 0 };
+      const clamp = (v: number) => Math.max(-800, Math.min(800, v));
+      raw[c.nodeId] = { dx: clamp(prev.dx + c.dx), dy: clamp(prev.dy + c.dy) };
+      g.metadata = { ...g.metadata, elementOffsets: raw };
+      const dir = [];
+      if (c.dx !== 0) dir.push(c.dx < 0 ? `左移 ${Math.abs(c.dx)}px` : `右移 ${c.dx}px`);
+      if (c.dy !== 0) dir.push(c.dy < 0 ? `上移 ${Math.abs(c.dy)}px` : `下移 ${c.dy}px`);
+      return `「${n.label}」已${dir.join("、") || "微调位置"}（说「回到原位」可还原）`;
+    }
+    case "set_spacing": {
+      // P30 微调：全局间距系数 → graph.metadata.spacingScale（positions() 所有布局的 gap 乘以它）
+      if (c.reset) {
+        if (g.metadata) delete g.metadata.spacingScale;
+        return "卡片间距已恢复默认";
+      }
+      g.metadata = { ...g.metadata, spacingScale: c.scale! };
+      return c.scale! > 1 ? `卡片间距已放宽（${Math.round((c.scale! - 1) * 100)}%）` : c.scale! < 1 ? `卡片间距已收紧（${Math.round((1 - c.scale!) * 100)}%）` : "卡片间距已恢复默认";
+    }
     case "relayout":
+      // 全量重排：单卡微移偏移一并清空（重排后旧偏移没有意义）
+      if (c.scope === "all" && g.metadata?.elementOffsets && Object.keys(g.metadata.elementOffsets).length > 0) {
+        g.metadata = { ...g.metadata, elementOffsets: {} };
+      }
       return c.scope === "all" ? "已重新布局整图" : "已局部重排";
     default:
       throw new Error("未知变更类型");

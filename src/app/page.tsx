@@ -86,6 +86,7 @@ export default function Home() {
 
   const apiRef = useRef<ExcalidrawImperativeAPI | null>(null);
   const pendingRef = useRef<unknown[] | null>(null);
+  const currentBoardIdRef = useRef<string | null>(null); // P30：当前画板对应的「我的看山」收藏夹 id（自动回写用）
   const [boardMounted, setBoardMounted] = useState(false);
   const followeesRef = useRef<Set<string>>(new Set());
   const graphRef = useRef<GraphState | null>(null);
@@ -235,6 +236,17 @@ export default function Home() {
       localStorage.setItem(BOARD_KEY, JSON.stringify(cache));
     } catch {
       /* 配额满则忽略 */
+    }
+  }, []);
+  // P30：自动回写「我的看山」——助手改图/换色后当前画板对应的收藏夹快照同步覆盖，
+  // 解决「我的看山点开还是生成时的旧版」
+  const syncLibraryBoard = useCallback((g: GraphState, m: Mode, title: string) => {
+    const id = currentBoardIdRef.current;
+    if (!id) return;
+    try {
+      setSavedBoards(saveBoard(localStorage, { id, title, mode: m === "roadmap" ? "roadmap" : "compare", graph: g, savedAt: Date.now() }));
+    } catch {
+      /* 存储异常忽略，不影响画板 */
     }
   }, []);
   const persistElements = useCallback(() => {
@@ -436,7 +448,9 @@ export default function Home() {
             await renderGraph(data.graph, undefined, finalMode);
             persistBoard(data.graph, finalMode, question, streamedItems);
             const boardTitle = "question" in data.graph ? data.graph.question : "topic" in data.graph ? data.graph.topic : data.graph.title;
-            setSavedBoards(saveBoard(localStorage, { id: `${finalMode}:${boardTitle}`, title: boardTitle, mode: finalMode === "roadmap" ? "roadmap" : "compare", graph: data.graph, savedAt: Date.now() }));
+            const boardId = `${finalMode}:${boardTitle}`;
+            currentBoardIdRef.current = boardId; // P30：记录收藏夹 id，助手改图后自动回写
+            setSavedBoards(saveBoard(localStorage, { id: boardId, title: boardTitle, mode: finalMode === "roadmap" ? "roadmap" : "compare", graph: data.graph, savedAt: Date.now() }));
             setStatus(
               data.cached
                 ? "已生成（缓存）"
@@ -531,6 +545,7 @@ export default function Home() {
     setBoardMounted(reset.boardMounted);
     setRestored(reset.restored);
     setPendingClear(false);
+    currentBoardIdRef.current = null; // P30：清空后与收藏夹快照解绑，新图修改不再回写旧收藏
     try {
       localStorage.removeItem(BOARD_KEY);
       sessionStorage.removeItem(ELEMENTS_KEY);
@@ -575,6 +590,7 @@ export default function Home() {
     const nextSession = newBoardSessionId();
     boardSessionRef.current = nextSession;
     setBoardSession(nextSession);
+    currentBoardIdRef.current = board.id; // P30：当前画板对应收藏夹 id，后续助手修改自动回写这份
     setGraph(restoredGraph); graphRef.current = restoredGraph; setGraphMode(restoredMode); setMode(restoredMode); setQuestion(board.title); setBoardMounted(true); setShowProfile(false); renderGraph(restoredGraph, undefined, restoredMode); persistBoard(restoredGraph, restoredMode, board.title);
   }, [persistBoard, renderGraph]);
   const changePalette = useCallback((palette: PaletteId) => {
@@ -594,9 +610,10 @@ export default function Home() {
       graphRef.current = next;
       const boardTitle = "question" in next ? String(next.question) : "nodes" in next ? String(next.title) : String((next as unknown as { topic?: string; title?: string }).topic ?? "看山图");
       persistBoard(next, graphMode, boardTitle, items);
+      syncLibraryBoard(next, graphMode, boardTitle); // P30：换色也回写收藏夹
     }
     catch (cause) { setError(cause instanceof Error ? cause.message : "配色切换失败"); }
-  }, [graph, graphMode, items, persistBoard]);
+  }, [graph, graphMode, items, persistBoard, syncLibraryBoard]);
 
   // 热榜点击：弹窗确认后生成
   const pickHot = useCallback((title: string) => {
@@ -654,6 +671,14 @@ export default function Home() {
               JSON.stringify(previous && "nodes" in previous ? (previous as KnowledgeGraph).metadata?.removedEdges : undefined) ||
             JSON.stringify((g as KnowledgeGraph).metadata?.groupContainers) !==
               JSON.stringify(previous && "nodes" in previous ? (previous as KnowledgeGraph).metadata?.groupContainers : undefined) ||
+            // P30 微调：间距系数/单卡偏移/单卡样式变化 → 卡片几何/样式变化，必须全量重渲染
+            // （局部渲染按 id 映射旧坐标会把偏移吃掉、样式覆盖不生效）
+            (g as KnowledgeGraph).metadata?.spacingScale !==
+              (previous && "nodes" in previous ? (previous as KnowledgeGraph).metadata?.spacingScale : undefined) ||
+            JSON.stringify((g as KnowledgeGraph).metadata?.elementOffsets) !==
+              JSON.stringify(previous && "nodes" in previous ? (previous as KnowledgeGraph).metadata?.elementOffsets : undefined) ||
+            JSON.stringify((g as KnowledgeGraph).nodes.map((n) => n.metadata?.styleOverrides)) !==
+              JSON.stringify(previous && "nodes" in previous ? (previous as KnowledgeGraph).nodes.map((n) => n.metadata?.styleOverrides) : undefined) ||
             // 分组归属变化（add_group 移动成员/move_node）也触发全量重排
             JSON.stringify((g as KnowledgeGraph).groups.map((grp) => grp.nodeIds)) !==
               JSON.stringify(previous && "nodes" in previous ? (previous as KnowledgeGraph).groups.map((grp) => grp.nodeIds) : [])));
@@ -665,7 +690,7 @@ export default function Home() {
       // 结构变化（删除/合并/移动/重排）→ 全量重排防重叠
       // 结构性修改或视觉参数变化必须整体重排；文字修改沿用用户坐标
       const structural =
-        /删除|合并|移动|移出|重排|重新布局|新增|补充|连线|箭头|包住|圈|分组/.test(labels) ||
+        /删除|合并|移动|移出|重排|重新布局|新增|补充|连线|箭头|包住|圈|分组|左移|右移|上移|下移|回到默认位置|间距/.test(labels) ||
         geometryChanged ||
         appliedLabels === undefined;
       if (!structural && apiRef.current) {
@@ -681,13 +706,15 @@ export default function Home() {
           });
           apiRef.current?.updateScene({ elements: merged as never });
           persistBoard(g, nextMode, "question" in g ? g.question : "nodes" in g ? g.title : g.topic);
+          syncLibraryBoard(g, nextMode, "question" in g ? g.question : "nodes" in g ? g.title : g.topic); // P30：回写收藏夹
         })();
         return;
       }
       renderGraph(g, undefined, nextMode);
       persistBoard(g, nextMode, "question" in g ? g.question : "nodes" in g ? g.title : g.topic);
+      syncLibraryBoard(g, nextMode, "question" in g ? g.question : "nodes" in g ? g.title : g.topic); // P30：回写收藏夹
     },
-    [renderGraph, persistBoard, graphMode]
+    [renderGraph, persistBoard, syncLibraryBoard, graphMode]
   );
 
   return (

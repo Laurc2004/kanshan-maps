@@ -370,3 +370,144 @@ test("validate: add_edge accepts decorative ids", () => {
   assert.equal(validateChanges(graph(), [{ type: "add_edge", fromId: "lane-0", toId: "lane-1" }]).length, 0);
   assert.equal(validateChanges(graph(), [{ type: "add_edge", fromId: "question", toId: "debate-consensus" }]).length, 0);
 });
+
+// ───── P30 自由微调 ─────
+
+test("validate+apply: set_node_style happy path writes styleOverrides", () => {
+  const g = graph();
+  const changes = [{ type: "set_node_style", nodeId: "n1", patch: { fill: "#fff4e6", fontScale: 1.2 } }] as never;
+  assert.equal(validateChanges(g, changes).length, 0);
+  const result = applyChangesAtomically(g, changes);
+  assert.equal(result.ok, true);
+  const n1 = result.graph.nodes.find((n) => n.id === "n1")!;
+  assert.deepEqual(n1.metadata?.styleOverrides, { fill: "#fff4e6", fontScale: 1.2 });
+  assert.match(result.applied[0], /底色、字号/);
+});
+
+test("validate: set_node_style rejects bad colors/ranges/empty patch/unknown node", () => {
+  assert.equal(validateChanges(graph(), [{ type: "set_node_style", nodeId: "n1", patch: { fill: "red" } }] as never).length, 1);
+  assert.equal(validateChanges(graph(), [{ type: "set_node_style", nodeId: "n1", patch: { fontScale: 3 } }] as never).length, 1);
+  assert.equal(validateChanges(graph(), [{ type: "set_node_style", nodeId: "n1", patch: { width: 50 } }] as never).length, 1);
+  assert.equal(validateChanges(graph(), [{ type: "set_node_style", nodeId: "ghost", patch: { fill: "#ffffff" } }] as never).length, 1);
+  assert.equal(validateChanges(graph(), [{ type: "set_node_style", nodeId: "n1", patch: {} }] as never).length, 1);
+});
+
+test("apply: set_node_style merges into existing overrides", () => {
+  const first = applyChangesAtomically(graph(), [{ type: "set_node_style", nodeId: "n1", patch: { fill: "#111111" } }] as never);
+  const second = applyChangesAtomically(first.graph, [{ type: "set_node_style", nodeId: "n1", patch: { stroke: "#222222" } }] as never);
+  assert.deepEqual(second.graph.nodes.find((n) => n.id === "n1")!.metadata?.styleOverrides, { fill: "#111111", stroke: "#222222" });
+});
+
+test("apply: move_element accumulates clamped offsets; reset clears", () => {
+  const once = applyChangesAtomically(graph(), [{ type: "move_element", nodeId: "n2", dx: -60, dy: 30 }] as never);
+  assert.deepEqual(once.graph.metadata?.elementOffsets, { n2: { dx: -60, dy: 30 } });
+  assert.match(once.applied[0], /左移 60px、下移 30px/);
+  const twice = applyChangesAtomically(once.graph, [{ type: "move_element", nodeId: "n2", dx: -60, dy: 0 }] as never);
+  assert.deepEqual(twice.graph.metadata?.elementOffsets, { n2: { dx: -120, dy: 30 } });
+  const reset = applyChangesAtomically(twice.graph, [{ type: "move_element", nodeId: "n2", dx: 0, dy: 0, reset: true }] as never);
+  assert.deepEqual(reset.graph.metadata?.elementOffsets, {});
+  assert.match(reset.applied[0], /回到默认位置/);
+});
+
+test("validate: move_element rejects non-number and over-range", () => {
+  assert.equal(validateChanges(graph(), [{ type: "move_element", nodeId: "n1", dx: 1000, dy: 0 }] as never).length, 1);
+  assert.equal(validateChanges(graph(), [{ type: "move_element", nodeId: "ghost", dx: 10, dy: 10 }] as never).length, 1);
+});
+
+test("apply: set_spacing sets/resets spacingScale", () => {
+  const set = applyChangesAtomically(graph(), [{ type: "set_spacing", scale: 1.25 }] as never);
+  assert.equal(set.graph.metadata?.spacingScale, 1.25);
+  assert.match(set.applied[0], /放宽/);
+  const tight = applyChangesAtomically(graph(), [{ type: "set_spacing", scale: 0.8 }] as never);
+  assert.match(tight.applied[0], /收紧/);
+  const reset = applyChangesAtomically(set.graph, [{ type: "set_spacing", reset: true }] as never);
+  assert.equal(reset.graph.metadata?.spacingScale, undefined);
+  assert.equal(validateChanges(graph(), [{ type: "set_spacing", scale: 2 }] as never).length, 1);
+});
+
+test("apply: relayout all and layout switch clear elementOffsets", () => {
+  const moved = applyChangesAtomically(graph(), [{ type: "move_element", nodeId: "n1", dx: 50, dy: 50 }] as never);
+  assert.ok(moved.graph.metadata?.elementOffsets);
+  const relaid = applyChangesAtomically(moved.graph, [{ type: "relayout", scope: "all" }]);
+  assert.deepEqual(relaid.graph.metadata?.elementOffsets, {});
+  const moved2 = applyChangesAtomically(graph(), [{ type: "move_element", nodeId: "n1", dx: 50, dy: 50 }] as never);
+  const switched = applyChangesAtomically(moved2.graph, [{ type: "set_presentation", patch: { layout: "radial-map" } }]);
+  assert.deepEqual(switched.graph.metadata?.elementOffsets, {});
+});
+
+test("risk: fine-tuning changes are low risk (no preview needed)", () => {
+  assert.equal(classifyRisk([{ type: "set_node_style", nodeId: "n1", patch: { fill: "#ffffff" } }] as never), "low");
+  assert.equal(classifyRisk([{ type: "move_element", nodeId: "n1", dx: 10, dy: 10 }] as never), "low");
+  assert.equal(classifyRisk([{ type: "set_spacing", scale: 1.2 }] as never), "low");
+});
+
+test("router: move/spacing fine-tune intents route to style with deterministic changes", () => {
+  const ctx = buildAgentContext(graph());
+  const move = routeByRules("把「支持考研」往左挪一点", ctx);
+  assert.equal(move?.intent, "style");
+  const moveChanges = changesFromRules(move!, "把「支持考研」往左挪一点", ctx);
+  assert.deepEqual(moveChanges, [{ type: "move_element", nodeId: "n1", dx: -60, dy: 0 }]);
+
+  const spacing = routeByRules("卡片间距大一点", ctx);
+  assert.equal(spacing?.intent, "style");
+  const spacingChanges = changesFromRules(spacing!, "卡片间距大一点", ctx);
+  assert.deepEqual(spacingChanges, [{ type: "set_spacing", scale: 1.25 }]);
+
+  const tight = routeByRules("间距收紧一些", ctx);
+  assert.deepEqual(changesFromRules(tight!, "间距收紧一些", ctx), [{ type: "set_spacing", scale: 0.8 }]);
+
+  const back = routeByRules("卡片间距恢复正常", ctx);
+  assert.deepEqual(changesFromRules(back!, "卡片间距恢复正常", ctx), [{ type: "set_spacing", reset: true }]);
+
+  const home = routeByRules("把「支持考研」回到原位", ctx);
+  assert.deepEqual(changesFromRules(home!, "把「支持考研」回到原位", ctx), [{ type: "move_element", nodeId: "n1", dx: 0, dy: 0, reset: true }]);
+});
+
+test("router: explicit pixel move parses distance", () => {
+  const ctx = buildAgentContext(graph());
+  const route = routeByRules("「支持考研」往上移 120px", ctx);
+  const changes = changesFromRules(route!, "「支持考研」往上移 120px", ctx);
+  assert.deepEqual(changes, [{ type: "move_element", nodeId: "n1", dx: 0, dy: -120 }]);
+});
+
+// ───── P30 恢复连线修复 ─────
+
+test("P30: restore removed decorative edge via add_edge (question→debate-consensus)", () => {
+  const g = graph();
+  g.nodes.push({ id: "question", label: "考研还是就业", description: "q", citations: [], emphasis: "high" });
+  g.nodes.push({ id: "c1", label: "共识1", description: "", citations: [], group: "consensus" });
+  g.groups.push({ id: "consensus", label: "共识", nodeIds: ["c1"] });
+  // 先删除
+  const r1 = applyChangesAtomically(g, [{ type: "remove_edges", pairs: [{ fromId: "question", toId: "debate-consensus" }], reason: "test" }]);
+  assert.equal(r1.ok, true);
+  assert.deepEqual(r1.graph.metadata?.removedEdges, ["question→debate-consensus"]);
+  // 恢复：add_edge 不应把装饰边加进 graph.edges
+  const r2 = applyChangesAtomically(r1.graph, [{ type: "add_edge", fromId: "question", toId: "debate-consensus" }]);
+  assert.equal(r2.ok, true);
+  assert.equal((r2.graph.metadata?.removedEdges as string[] | undefined)?.length ?? 0, 0, "removedEdges 已清空");
+  assert.ok(!r2.graph.edges.some(e => e.toId === "debate-consensus"), "装饰边不进 graph.edges");
+});
+
+test("P30: restore removed data edge via add_edge (n1→n2)", () => {
+  const g = graph();
+  g.edges.push({ fromId: "n1", toId: "n2" });
+  // 删除数据边
+  const r1 = applyChangesAtomically(g, [{ type: "remove_edges", pairs: [{ fromId: "n1", toId: "n2" }], reason: "test" }]);
+  assert.equal(r1.ok, true);
+  assert.equal(r1.graph.edges.filter(e => e.fromId === "n1" && e.toId === "n2").length, 0);
+  // 恢复：数据边应加回 graph.edges
+  const r2 = applyChangesAtomically(r1.graph, [{ type: "add_edge", fromId: "n1", toId: "n2" }]);
+  assert.equal(r2.ok, true);
+  assert.ok(r2.graph.edges.some(e => e.fromId === "n1" && e.toId === "n2"), "数据边恢复进 graph.edges");
+});
+
+test("P30: restore lane arrow via add_edge (lane-0→lane-1)", () => {
+  const g = graph();
+  // 删除站间箭头
+  const r1 = applyChangesAtomically(g, [{ type: "remove_edges", pairs: [{ fromId: "lane-0", toId: "lane-1" }], reason: "test" }]);
+  assert.equal(r1.ok, true);
+  // 恢复
+  const r2 = applyChangesAtomically(r1.graph, [{ type: "add_edge", fromId: "lane-0", toId: "lane-1" }]);
+  assert.equal(r2.ok, true);
+  assert.equal((r2.graph.metadata?.removedEdges as string[] | undefined)?.length ?? 0, 0, "removedEdges 已清空");
+});
