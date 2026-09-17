@@ -23,7 +23,9 @@ function safeId(value: string): string {
 }
 function widthOf(value: string, size: number): number {
   let width = 0;
-  for (const char of value) width += /[\u2e80-\u9fff\uf900-\ufaff\uff00-\uffef]/.test(char) ? size : size * 0.55;
+  // P32：CJK 实际渲染宽度约 1.02~1.06 倍 fontSize（加粗/抗锯齿/字体度量差异），
+  // 取 1.05 给余量，避免 wrapLines 估算刚好等于 maxWidth 时右缘字被裁半个
+  for (const char of value) width += /[\u2e80-\u9fff\uf900-\ufaff\uff00-\uffef]/.test(char) ? size * 1.05 : size * 0.55;
   return width;
 }
 // 折行并返回实际行（不做截断），行数供高度计算与 wrap() 复用
@@ -130,14 +132,17 @@ function card(node: KnowledgeNode, box: Box, index: number, tokens: ReturnType<t
   const fontScale = style.fontScale ?? 1;
   const titleSize = Math.round(tokens.keyFindingSize * fontScale);
   const bodySize = Math.round(tokens.evidenceSize * fontScale);
-  const innerWidth = box.width - CARD_PAD * 2;
+  // P32：style.width 覆盖布局宽度（set_node_style 微调生效），卡片矩形与文字都按覆盖宽渲染
+  const effectiveWidth = style.width ?? box.width;
+  const effectiveBox = { ...box, width: effectiveWidth };
+  const innerWidth = effectiveWidth - CARD_PAD * 2;
   const title = fullText ? wrapLines(node.label, titleSize, innerWidth).join("\n") : wrap(node.label, titleSize, innerWidth, TITLE_MAX_LINES);
   const body = fullText ? wrapLines(node.description, bodySize, innerWidth).join("\n") : wrap(node.description, bodySize, innerWidth, BODY_MAX_LINES);
   const titleLineCount = title ? title.split("\n").length : 0;
   // 正文起点紧跟标题实际行数（与 cardHeight 的累计口径一致，确保文字不超卡底）
   const bodyY = box.y + CARD_PAD + Math.max(1, titleLineCount) * titleSize * LINE_HEIGHT + TITLE_BODY_GAP;
   // P24：标题用深色（palette.title）保证层级对比，强调卡加粗描边；正文 palette.body
-  const elements = [{ ...base(id, "rectangle", box, tokens), backgroundColor: fill, strokeColor: stroke, strokeWidth: node.emphasis === "high" ? tokens.strokeWidth + 1 : tokens.strokeWidth, link: link ?? null, customData: { nodeId: node.id } }, text(`${id}-title`, box.x + CARD_PAD, box.y + CARD_PAD, title, titleSize, tokens.palette.title, innerWidth, tokens)];
+  const elements = [{ ...base(id, "rectangle", effectiveBox, tokens), backgroundColor: fill, strokeColor: stroke, strokeWidth: node.emphasis === "high" ? tokens.strokeWidth + 1 : tokens.strokeWidth, link: link ?? null, customData: { nodeId: node.id } }, text(`${id}-title`, box.x + CARD_PAD, box.y + CARD_PAD, title, titleSize, tokens.palette.title, innerWidth, tokens)];
   if (body) elements.push(text(`${id}-body`, box.x + CARD_PAD, bodyY, body, bodySize, tokens.palette.body, innerWidth, tokens));
   return elements;
 }
@@ -217,7 +222,8 @@ function positionsBase(graph: KnowledgeGraph, layout: LayoutKind, tokens: Return
       const hi = nodes.findIndex((n) => n.emphasis === "high");
       if (hi >= 0) capsuleId = nodes[hi].id;
     }
-    const colW = debateWidth + 140 * tokens.spacing;
+    // P32：列宽按该列最大卡片宽度计算（set_node_style 加宽后列间距自动调整，连线锚点跟随）
+    const laneMaxWidth = new Map<number, number>();
     const X0 = 70, TOP = 260;
     const lanes = new Map<number, number[]>();
     nodes.forEach((node, i) => {
@@ -228,10 +234,20 @@ function positionsBase(graph: KnowledgeGraph, layout: LayoutKind, tokens: Return
       const lane = gIdx >= 0 ? gIdx : 0;
       if (!lanes.has(lane)) lanes.set(lane, []);
       lanes.get(lane)!.push(i);
+      // 记录该列最大卡片宽度（含 style.width 覆盖）
+      const w = nodeStyleOverrides(node).width ?? debateWidth;
+      laneMaxWidth.set(lane, Math.max(laneMaxWidth.get(lane) ?? 0, w));
     });
+    // 列 x 起点：按前列实际最大宽度累计
+    const laneX = new Map<number, number>();
+    let accX = X0;
+    for (const lane of [...lanes.keys()].sort((a, b) => a - b)) {
+      laneX.set(lane, accX);
+      accX += (laneMaxWidth.get(lane) ?? debateWidth) + 140 * tokens.spacing;
+    }
     for (const [lane, members] of [...lanes.entries()].sort((a, b) => a[0] - b[0])) {
       const ys = stackY(members.map((i) => ({ index: i, height: debateHeightOf(nodes[i]) })), TOP, gap);
-      members.forEach((idx) => { boxes[idx] = { x: X0 + lane * colW, y: ys.get(idx)!, width: debateWidth, height: debateHeightOf(nodes[idx]) }; });
+      members.forEach((idx) => { boxes[idx] = { x: laneX.get(lane)!, y: ys.get(idx)!, width: debateWidth, height: debateHeightOf(nodes[idx]) }; });
     }
     return boxes;
   }

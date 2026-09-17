@@ -16,9 +16,11 @@ const LINK_ON_RE = /(恢复|打开|加上|加回|开启).{0,4}(超链接|链接|
 // 新增卡片/观点：「再加一点」「补充一条」「新增一个阶段」「加一张卡片」
 const ADD_NODE_RE = /(添加|新增|加上|补充|再要|再来|补一).{0,6}(点|条|个|张|一项|一项内容|张卡|卡片|节点|观点|立场|阶段|步骤|部分|分支|方面|路线)|加一(点|条|个|张)|(点|条|卡片|观点|立场|阶段|步骤).{0,3}(不够|太少|再加|加一个)|第[一二三四五六七八九十\d]+(点|条|个|步|阶段)/;
 // 连线操作：「去掉 A 到 B 的箭头」「断开两者的连线」「把 1 和 2 连起来」「恢复箭头」
-const EDGE_OFF_RE = /(去掉|去除|断开|删掉|删除|取消|不要).{0,10}(箭头|连线|连接线|关系线)|(箭头|连线).{0,4}(去掉|去除|断开|删掉|删除)/;
+const EDGE_OFF_RE = /(去掉|去除|断开|删掉|删除|取消|不要).{0,10}(箭头|连线|连接线|关系线|连接)|(箭头|连线|连接).{0,4}(去掉|去除|断开|删掉|删除)/;
 const EDGE_ON_RE = /(连起来|连一下|加连线|加箭头|画条线|连接|关联).{0,4}/;
 const EDGE_RESTORE_RE = /恢复.{0,4}(箭头|连线|连接线)/;
+// P32：左右列卡片数调整——「左边三个观点右边四个观点」「左边减一张」「右边加一张」
+const SIDE_COUNT_RE = /(左边|右侧?|左侧?|右边).{0,6}([一二两三四五六七八九十\d]+)\s*(个|张|条|项)?(观点|立场|卡片|卡)|([一二两三四五六七八九十\d]+)\s*(个|张|条|项)(观点|立场|卡片|卡).{0,4}(左边|右侧?|左侧?|右边)/;
 // 大卡片容器：「一张大卡包住 A 和 B」「把这两点圈在一起/归为一组」
 const CONTAINER_RE = /(大卡|大卡片|大框|框|框起来|圈起来|圈在|包起来|包住|包裹|包含|归为一组|归到一组|放在一起|合并成一组|分成一组)/;
 // P30 微调：单卡移动（「把这张卡往左挪一点」「往上移 50」）
@@ -36,6 +38,7 @@ export interface RouteResult {
 }
 
 // 从用户文本中解析位置指代（"第一个立场""左边的"等）到节点 ID
+// P32：支持列级指代（「左边三个」「右边四个」），映射到 debate-grid 的 stance 列 / evidence-tree 的奇偶列
 function resolveTargets(text: string, ctx: AgentContext): string[] {
   const ids: string[] = [];
   const ordinalMap: Record<string, number> = {
@@ -47,6 +50,33 @@ function resolveTargets(text: string, ctx: AgentContext): string[] {
   // 按 label 直接匹配（用户引用卡片上的文字）
   for (const n of ctx.nodes) {
     if (n.label && n.label.length >= 2 && text.includes(n.label)) ids.push(n.id);
+  }
+  // P32：列级指代——「左边三个」「右边四个」「左边几张」「右边几张」
+  // debate-grid：group lane 0=左列、lane 1=右列；evidence-tree summary：奇数索引=左列、偶数索引=右列
+  const sideMatch = text.match(/(左|右)(?:边|侧|面)(?:的)?(?:(一|二|三|四|五|六|七|八|九|十|\d+)(?:个|张|条|块|点))?/);
+  if (sideMatch) {
+    const side = sideMatch[1]; // 左 or 右
+    const countStr = sideMatch[2];
+    const countMap: Record<string, number> = { 一: 1, 二: 2, 两: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 十: 10 };
+    const targetCount = countStr ? (countMap[countStr] ?? parseInt(countStr, 10)) : undefined;
+    const sideIds: string[] = [];
+    if (ctx.kind === "debate-grid") {
+      // debate-grid：按分组 lane 分侧（lane 0=左、lane 1=右、其余依次扩展）；无分组节点不进左右列
+      const lane = side === "左" ? 0 : 1;
+      for (const n of ctx.nodes) {
+        const gIdx = ctx.groups.findIndex((g) => g.nodeIds.includes(n.id));
+        if (gIdx === lane) sideIds.push(n.id);
+      }
+    } else if (ctx.kind === "evidence-tree") {
+      // evidence-tree summary（思维导图）：奇数索引=左列、偶数索引=右列
+      ctx.nodes.forEach((n, i) => {
+        const isLeft = i % 2 === 0;
+        if ((side === "左" && isLeft) || (side === "右" && !isLeft)) sideIds.push(n.id);
+      });
+    }
+    // 如果指定了数量，只取前 N 个；否则取该侧全部
+    const finalIds = targetCount !== undefined ? sideIds.slice(0, targetCount) : sideIds;
+    ids.push(...finalIds);
   }
   return [...new Set(ids)];
 }
@@ -76,6 +106,10 @@ export function routeByRules(message: string, ctx: AgentContext): RouteResult | 
   // 新增卡片：本就无现有目标，targetIds 为空是正常的，必须高置信直达模型（否则被 clarify 吞掉）
   if (ADD_NODE_RE.test(text) && !STRUCTURE_RE.test(text) && !EMPHASIZE_RE.test(text) && !RENAME_RE.test(text)) {
     return { intent: "structure", targetIds: targets, confidence: "high", reason: "新增卡片/观点" };
+  }
+  // P32：左右列卡片数调整（「左边三个观点右边四个观点」「左边减一张」）——结构性修改，需确认
+  if (SIDE_COUNT_RE.test(text)) {
+    return { intent: "structure", targetIds: targets, confidence: "high", reason: "调整左右列卡片数量" };
   }
   // 超链接开关必须在删除/结构规则之前：用户说「去掉链接」不是删内容
   if (LINK_OFF_RE.test(text) && !LINK_ON_RE.test(text)) {
@@ -156,7 +190,30 @@ export function parseClassifierResult(raw: string): RouteResult | null {
 }
 
 // 根据意图 + 上下文生成 GraphChange（规则能完全确定的直接生成，不需要模型）
+// P32：复合句拆分——「左边三个，顺便去除超链接」按「顺便/还有/同时/另外/并且/再」切分，每段独立路由，全部规则命中时合并返回
 export function changesFromRules(
+  route: RouteResult,
+  message: string,
+  ctx: AgentContext,
+): GraphChange[] | null {
+  // P32：复合句拆分——先按连接词切分，每段独立走 changesFromRulesSingle，全部命中则合并
+  const segments = message.split(/顺便|还有|同时|另外|并且|而且|再(?=一|要|把|将|去|加|删|移)|；|;/).map((s) => s.trim()).filter((s) => s.length > 0);
+  if (segments.length > 1) {
+    const allChanges: GraphChange[] = [];
+    for (const seg of segments) {
+      const segRoute = routeByRules(seg, ctx);
+      if (!segRoute) return null; // 有一段规则不识别 → 整句交给模型
+      const segChanges = changesFromRulesSingle(segRoute, seg, ctx);
+      if (segChanges === null) return null; // 有一段规则生成不了 → 整句交给模型
+      allChanges.push(...segChanges);
+    }
+    return allChanges;
+  }
+  return changesFromRulesSingle(route, message, ctx);
+}
+
+// 单句规则生成（原 changesFromRules 主体）
+function changesFromRulesSingle(
   route: RouteResult,
   message: string,
   ctx: AgentContext,
@@ -254,6 +311,13 @@ export function changesFromRules(
       }
     }
     if (pairs.length > 0) return [{ type: "remove_edges", pairs, reason: "用户要求去掉连线" }];
+    // P32 幂等：所有目标连线都已在 removedEdges 里（用户重复说「去掉中心连接」）→ 返回空数组，
+    // decide.ts 会回「这条连线已经去掉了」而不是交给模型瞎编
+    const allAlreadyRemoved =
+      (ctx.kind === "debate-grid" && ctx.removedEdges?.includes("question→debate-consensus")) ||
+      (ctx.kind === "swimlane-roadmap" && ctx.groups.slice(0, -1).every((_, i) => ctx.removedEdges?.includes(`lane-${i}→lane-${i + 1}`))) ||
+      (ctx.kind === "evidence-tree" && ctx.nodes.filter((n) => n.id !== "evidence-root").every((n) => ctx.removedEdges?.includes(`evidence-root→${n.id}`)));
+    if (allAlreadyRemoved) return [];
     return null; // 没有可删的连线，交给模型友好回答
   }
   // P30 修复：恢复连线——从 metadata.removedEdges 里恢复所有被删的连线（确定性，不经过模型）

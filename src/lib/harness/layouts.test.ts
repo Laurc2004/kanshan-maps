@@ -418,3 +418,26 @@ test("P30: fine-tuned scene still has all typed elements (no blank-board regress
   assert.ok(scene.length > 0);
   for (const el of scene) assert.equal(typeof el.type, "string");
 });
+
+// ───── P32 文字显示 + 列宽跟随 ─────
+
+test("P32: CJK width estimation has 5% headroom (no half-character clipping)", () => {
+  // widthOf 的 CJK 系数从 1.0 调到 1.05，验证长中文标题不再恰好贴边
+  const g = graph("debate-grid");
+  g.nodes[0].label = "加息与扩表并行：本次紧缩不同于2022-2023年的「双紧」";
+  const scene = knowledgeGraphToScene(g);
+  const card = cardByNodeId(scene, "n0");
+  const title = scene.find((e) => e.id === `${card.id}-title`) as { width: number; fontSize: number };
+  // 文字宽度必须小于卡片内宽（留 CARD_PAD 余量），否则右缘字被裁
+  assert.ok(title.width <= card.width - 36, `title width ${title.width} exceeds card inner width ${card.width - 36}`);
+});
+
+test("P32: debate-grid lane spacing follows overridden card width", () => {
+  const g = graph("debate-grid");
+  g.nodes[0].metadata = { styleOverrides: { width: 520 } };
+  const scene = knowledgeGraphToScene(g);
+  const card0 = cardByNodeId(scene, "n0"); // lane 0（g1 分组）
+  const card3 = cardByNodeId(scene, "n3"); // lane 1（g2 分组）
+  // lane 1 的 x 起点必须避开 lane 0 最宽卡片（520 + 列间隙）
+  assert.ok(card3.x >= card0.x + 520 + 100, `lane1 x ${card3.x} too close to lane0 (width 520 at x ${card0.x})`);
+});
