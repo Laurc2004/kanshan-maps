@@ -400,6 +400,17 @@
 - ADD_NODE_RE 的 `加一` 前缀误吞「把第一个立场标为重点」（EMPHASIZE 回归）→ 拆成 `加一(点|条|个|张)` 独立分支 + ADD_NODE_RE 让位 EMPHASIZE/RENAME
 - add_edge 恢复数据边时只清 removedEdges 没补回 graph.edges（重渲染仍不画）→ 恢复时非装饰边补回 edges
 
+## Phase 31: 删除箭头/连线仍复现 — status: in_progress
+
+Issue #3：PR #2 修复后用户仍复现「对话说已删除，实际图没删」。
+
+排查方向：
+1. applyAgentGraph 全量重渲染路径是否正确传递 metadata.removedEdges
+2. normalizeAgentGraph 是否丢弃 metadata
+3. 旧格式缓存图（ViewpointGraph/RoadmapGraph）走 legacy 渲染器，完全不查 removedEdges
+4. 局部渲染路径（按 id 保留坐标）对箭头元素的处理
+5. preview→commit 确认流后前端拿到的 graph 是否含 removedEdges
+
 ## Phase 30: 助手连线删除全覆盖 + 我的看山自动回写 + 自由微调操作集 — status: complete
 
 背景（用户反馈 3 项）：
