@@ -34,6 +34,10 @@ const CHANGE_INSTRUCTION = `你是知识图编辑助手。根据用户意图输�
 - 「大卡包住 A 和 B」「把这两点圈起来/归为一组」：用 add_group 且 label 为 ""，nodeIds 是被包住的卡片 ID
 - 「去掉某箭头/连线」：pairs 里给出两端节点 ID；用户说「第1站到第2站的箭头」对应 fromId "lane-0"、toId "lane-1"
 - 用户说「恢复连线/箭头」：用 add_edge 给出原来的两端（系统会识别之前被去掉的连线并恢复）
+- P32：用户说「左边/右边 + 数量」调整卡片数（「左边三个观点右边四个观点」「左边减一张」「右边加一张」）时：
+  - debate-grid 版式：stance-1=左列、stance-2=右列；要减少某侧用 remove_nodes（高风险，需确认），要增加某侧用 add_node 并指定 groupId 为该侧分组
+  - evidence-tree 版式：奇数索引节点=左列、偶数索引=右列；调整逻辑同上
+  - 如果用户只说「左边三个右边四个」但没给具体内容，追问想要什么样的新观点（或删除哪几张）
 - 删除/合并时必须给每个节点一句理由（引用不足/内容重复/无独立信息）
 - description 不超过 60 字
 - 用户要「思维导图」时：当前版式已是 evidence-tree 就输出 set_mode=summary（不要再改 layout）；否则同时输出 set_presentation.layout=evidence-tree 和 set_mode=summary
@@ -122,6 +126,10 @@ export async function decideAgentAction(
 
   // 5) 规则可直接生成变更（无需模型）
   const ruleChanges = changesFromRules(route, message, ctx);
+  // P32：changesFromRules 返回空数组 = 幂等操作（目标已达成，如「去掉中心连接」但已删过）→ 直接 answer 不生成变更
+  if (ruleChanges && ruleChanges.length === 0) {
+    return { type: "answer", reply: "这条连线已经去掉了，说「恢复连线」可还原。" };
+  }
   if (ruleChanges && ruleChanges.length > 0) {
     const issues = validateChanges(graph, ruleChanges);
     if (issues.length === 0) {

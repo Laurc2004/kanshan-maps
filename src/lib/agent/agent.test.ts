@@ -511,3 +511,95 @@ test("P30: restore lane arrow via add_edge (lane-0→lane-1)", () => {
   assert.equal(r2.ok, true);
   assert.equal((r2.graph.metadata?.removedEdges as string[] | undefined)?.length ?? 0, 0, "removedEdges 已清空");
 });
+
+// ───── P32 多任务拆分 + 列级指代 + 幂等删除 ─────
+
+test("P32: 复合句拆分——「把第一个标重点，顺便去除超链接」产出两组 changes", () => {
+  const ctx = buildAgentContext(graph());
+  const route = routeByRules("把第一个立场标为重点，顺便去除超链接", ctx);
+  assert.ok(route, "复合句应命中规则");
+  const changes = changesFromRules(route!, "把第一个立场标为重点，顺便去除超链接", ctx);
+  assert.ok(changes, "复合句应能生成 changes");
+  assert.equal(changes!.length, 2, "应拆成两组操作");
+  assert.equal(changes![0].type, "emphasize_node");
+  assert.equal(changes![1].type, "set_links");
+});
+
+test("P32: 复合句拆分——「标题改成 X，同时卡片间距收紧」", () => {
+  const ctx = buildAgentContext(graph());
+  const route = routeByRules("标题改成 考研与就业，同时卡片间距收紧", ctx);
+  assert.ok(route);
+  const changes = changesFromRules(route!, "标题改成 考研与就业，同时卡片间距收紧", ctx);
+  assert.ok(changes);
+  assert.equal(changes!.length, 2);
+  assert.equal(changes![0].type, "rename_graph");
+  assert.equal(changes![1].type, "set_spacing");
+});
+
+test("P32: 复合句有一段不识别 → 整句交给模型（返回 null）", () => {
+  const ctx = buildAgentContext(graph());
+  const route = routeByRules("把第一个立场标为重点，顺便讲个笑话", ctx);
+  assert.ok(route);
+  const changes = changesFromRules(route!, "把第一个立场标为重点，顺便讲个笑话", ctx);
+  assert.equal(changes, null, "有一段规则不识别时应返回 null 交给模型");
+});
+
+test("P32: 列级指代——debate-grid 左边三个 = lane 0 全部节点", () => {
+  const g = graph();
+  // 补一个左列节点（g1 已有 n1，再加一个）
+  g.nodes.push({ id: "n4", label: "考研二战", description: "再试一年", group: "g1", citations: [] });
+  g.groups[0].nodeIds.push("n4");
+  const ctx = buildAgentContext(g);
+  const route = routeByRules("把左边两个标为重点", ctx);
+  assert.ok(route);
+  assert.deepEqual([...route!.targetIds].sort(), ["n1", "n4"], "左边两个应命中 g1 分组的 n1 和 n4");
+});
+
+test("P32: 列级指代——evidence-tree 右边 = 奇数索引节点（i%2===1）", () => {
+  const g: KnowledgeGraph = {
+    ...graph(),
+    kind: "evidence-tree",
+    metadata: { mode: "summary" },
+    nodes: [
+      { id: "r", label: "根", description: "", citations: [] },
+      { id: "a", label: "右一", description: "", citations: [] },  // i=1 → 右列
+      { id: "b", label: "左一", description: "", citations: [] },  // i=2 → 左列
+      { id: "c", label: "右二", description: "", citations: [] },  // i=3 → 右列
+      { id: "d", label: "左二", description: "", citations: [] },  // i=4 → 左列
+    ],
+  };
+  const ctx = buildAgentContext(g);
+  const route = routeByRules("把右边的卡字大一点", ctx);
+  assert.ok(route);
+  // positions 的 evidence-tree summary 分支：isLeft = i % 2 === 0，所以右列是奇数索引 1、3
+  assert.deepEqual([...route!.targetIds].sort(), ["a", "c"], "evidence-tree 右边应命中奇数索引节点 a 和 c");
+});
+
+test("P32: 幂等删除——用户指定的连线已删、但还有其他连线未删时返回 null（交给模型）", () => {
+  const g = graph();
+  // 先删掉 n1→n3
+  const removed = applyChangesAtomically(g, [{ type: "remove_edges", pairs: [{ fromId: "n1", toId: "n3" }], reason: "test" }]);
+  assert.equal(removed.ok, true);
+  const ctx = buildAgentContext(removed.graph);
+  const route = routeByRules("去掉支持考研到先就业再考研的连线", ctx);
+  assert.ok(route);
+  const changes = changesFromRules(route!, "去掉支持考研到先就业再考研的连线", ctx);
+  // 用户指定了 A→B 且该边已删，但 debate-grid 的 question→debate-consensus 未删，
+  // 所以 pairs 为空但不是「全部已删」→ 返回 null 交给模型回「这条已删」
+  assert.equal(changes, null);
+});
+
+test("P32: 幂等删除——所有装饰箭头都已删时返回空数组", () => {
+  const g = graph();
+  // 构造一个 debate-grid 且已删掉 question→debate-consensus 的场景
+  g.nodes.push({ id: "question", label: "考研还是就业", description: "q", citations: [], emphasis: "high" });
+  g.nodes.push({ id: "c1", label: "共识1", description: "", citations: [], group: "consensus" });
+  g.groups.push({ id: "consensus", label: "共识", nodeIds: ["c1"] });
+  g.edges = []; // 数据边清空
+  g.metadata = { removedEdges: ["question→debate-consensus"] };
+  const ctx = buildAgentContext(g);
+  const route = routeByRules("去掉中心连接", ctx);
+  assert.ok(route);
+  const changes = changesFromRules(route!, "去掉中心连接", ctx);
+  assert.deepEqual(changes, [], "所有连线都已删时应返回空数组（幂等）");
+});

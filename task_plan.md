@@ -400,7 +400,55 @@
 - ADD_NODE_RE 的 `加一` 前缀误吞「把第一个立场标为重点」（EMPHASIZE 回归）→ 拆成 `加一(点|条|个|张)` 独立分支 + ADD_NODE_RE 让位 EMPHASIZE/RENAME
 - add_edge 恢复数据边时只清 removedEdges 没补回 graph.edges（重渲染仍不画）→ 恢复时非装饰边补回 edges
 
-## Phase 31: 删除箭头/连线仍复现 — status: in_progress
+## Phase 32: 文字显示修复 + 看山助手幻觉治理（左移右移/多任务/分组/连线跟随）— status: complete
+背景（用户反馈两大类）：
+1. 卡片文字显示问题：文字只显示半个字、边缘字显示不清（渲染 width 估算比实际字体宽，导致右缘字被裁；笔体+抗锯齿让边缘字发虚）
+2. 助手幻觉/失效：「去除中心连接」答非所问；「一句话多个任务只执行一个」；「左边几个卡片右边几个卡片」无效；调整宽度后连线不跟随
+根因定位：
+- T1 文字显示：layouts.ts widthOf() 的 CJK 系数 1.0 偏小，实际渲染约 1.02~1.06 倍 fontSize，wrapLines 估算刚好贴边时右缘字被裁半个
+- T4 连线不跟随：set_node_style 写 width 后，positionsBase 的 debate-grid 列宽 colW 固定（CARD_W_DEBATE + 140），不随 style.width 调整，卡片加宽后列间距不变、连线锚点还在旧位置
+- T5 「去除中心连接」幻觉：「中心连接」不含「连线/箭头」关键词，EDGE_OFF_RE 不命中，规则路由返回 null，模型自由发挥编造「已去除」
+- T2 多任务只执行一个：routeByRules 只返回第一个命中的意图，复合句（「顺便」「还有」）被截断
+- T3 列级指代失效：resolveTargets 只认序数/label，不认「左边三个」「右边四个」
+- T6 左右列卡片数调整：无规则识别「左边 N 个右边 M 个」，交给模型后模型编造
+修复：
+- T1：widthOf() CJK 系数 1.0→1.05（+5% 余量），测试验证长中文标题不再贴边
+- T4：card() 用 style.width 覆盖 box.width 渲染；positionsBase debate-grid 列宽按该列最大卡片宽度累计，连线锚点自动跟随
+- T5：EDGE_OFF_RE 加「连接」关键词；changesFromRules 返回空数组时 decide 回「这条已经去掉了」不生成变更
+- T2：changesFromRules 支持复合句拆分（「顺便/还有/同时/另外/并且/再」切分，每段独立路由，全部规则命中时合并返回）
+- T3：resolveTargets 支持列级指代——debate-grid 按分组 lane 分侧（lane 0=左、lane 1=右），evidence-tree 按奇偶索引分侧（i%2===0=左、i%2===1=右）
+- T6：SIDE_COUNT_RE 识别「左边三个观点右边四个观点」，路由到 structure 由模型生成 add_node/remove_nodes
+验证：npm run lint 0 errors / 6 warnings；npm run build ✓；node --test 217 pass / 0 fail / 6 skip（新增 9 个 P32 测试全绿）
+遗留：T6 的「左边 N 个右边 M 个」规则只识别到 structure intent，具体增删哪几张交给模型（需确认高风险操作）；evidence-tree 的列宽跟随未改（debate-grid 是主场景）
+
+
+根因（实读代码确认）：
+- R1 文字裁切：layouts.ts widthOf() CJK 按 1.0×fontSize 估算，实际字体（含标点/引号）普遍更宽 → 卡片 innerWidth 折行低估实际行数，文字横向出卡；卡内文本 text() 宽度 min(maxWidth, contentWidth) 无固定 padding 兜底，卡片右缘 1~2 个字被裁成半个字
+- R2 「一句话多个任务只执行一个」：router.ts routeByRules 只返回单一意图，「左边三个观点右边四个观点，顺便去除超链接」这类复合句只命中第一个正则就 return；decide.ts 也没有多意图拆分逻辑
+- R3 「左移/右移几个卡片」：MOVE_RE 只命中单卡方向词，没有「左边三个」「右边四个」这类列级语义；且 resolveTargets 只认序数/label，不认「左边/右边」
+- R4 「调整宽度以后线不会跟着调整」：positions() 里宽度覆盖只推开垂直重叠的右侧卡，但箭头（edge/curveArrow）的锚点仍用旧 box 坐标计算，卡片变宽后箭头起点/终点没跟着卡缘走
+- R5 「去除中心连接」答非所问：用户说「中心连接」指 debate 胶囊→共识的绿色连线，但 router 的 EDGE_OFF_RE 命中后 changesFromRules 只生成固定 pairs（question→debate-consensus），如果该边已被删过或不在 removedEdges 里就 return null 交给模型，模型看到 edgeList 里没有这条边就瞎编/答非所问
+- R6 「左边几个右边几个」做不了：add_node 一次只能加一张卡；没有「把左边列改成 3 张、右边列改成 4 张」这类列级结构调整操作
+
+设计决策：
+- 文字显示：card() 内文本改用固定宽度（fixedWidth=true，宽度=innerWidth），杜绝「按内容收缩宽度」导致的右缘裁切；widthOf 估算系数上调（CJK 1.05×、ASCII 0.58×）给字体留余量；卡片右缘额外留 2px 安全边距
+- 多任务：router 增加复合意图拆分——先按「顺便/还有/同时/另外/并且/再」切分句子，每段子句独立路由，全部规则命中时直接合并多组 GraphChange 一次性返回；任一子句规则不识别则整句交给模型
+- 左移/右移整列：resolveTargets 支持「左边/右侧/左边三个/右边四个」列指代——debate-grid 下按 group lane 0=左列、1=右列映射到该列全部节点；evidence-tree summary 模式按奇偶列映射
+- 连线跟随宽度：positions() 宽度覆盖后，箭头锚点改用最终调整后的 boxes（当前已是），但 positions() 的推开逻辑要把「被推开」的卡的箭头也重算——实际上箭头在 render() 里按 boxes 算，只要 boxes 是对的箭头就对；真正问题是「宽度变化后箭头起点仍在旧卡缘」，确认 render() 用的 boxes 是 positions() 返回的最终 boxes（已是），无需改——但要把「卡片变宽后相邻列被推开」的推开距离从 +12 改成跟随实际列间隙，避免列间重叠
+- 「去除中心连接」：changesFromRules 的 EDGE_OFF_RE 分支里，如果 debate-grid 的 question→debate-consensus 已在 removedEdges 里，返回「这条连线已经去掉了」的 answer（不生成变更），而不是 return null 让模型瞎编
+- 左/右列卡片数调整：新增「set_column_count」语义太复杂，改为支持「左边加一张/右边减一张」——利用现有 add_node + remove_nodes + move_node 组合，prompt 里教模型「左边/右边」对应 stance-1/stance-2 分组
+
+### 任务
+- [ ] T1 文字显示：card() 文本固定宽度 + widthOf 系数上调 + 卡片右缘安全边距；断言「文本框右缘 ≤ 卡片右缘 - 2」
+- [ ] T2 多任务拆分：router 复合句拆分（「顺便/还有/同时/另外」），每段独立路由，规则全命中时合并返回多组 changes；decide 层支持多组 changes 原子应用
+- [ ] T3 列级指代：resolveTargets 支持「左边/右边/左侧/右侧」+ 可选数量词，映射到 debate-grid 的 stance 列 / evidence-tree 的奇偶列
+- [ ] T4 连线跟随：确认 render() 箭头锚点用最终 boxes；positions() 推开距离用实际列间隙；补回归测试「卡片变宽后箭头起点贴新卡缘」
+- [ ] T5 「去除中心连接」幂等：已删的连线再删返回「已经去掉了」；未删的走正常 remove_edges
+- [ ] T6 左/右列卡片数调整：prompt 教模型用 add_node/remove_nodes/move_node 组合实现「左边三个右边四个」
+- [ ] T7 验证：全量测试 + tsc + lint + build + 真实 API 探测（多任务/列级调整/宽度后连线跟随）
+- [ ] T8 用户验收后提交部署
+
+### Phase 31 — 删除箭头/连线仍复现 — status: complete
 
 Issue #3：PR #2 修复后用户仍复现「对话说已删除，实际图没删」。
 
