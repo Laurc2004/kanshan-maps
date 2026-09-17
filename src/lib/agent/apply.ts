@@ -170,7 +170,7 @@ export function validateChanges(graph: KnowledgeGraph, changes: GraphChange[]): 
   return issues;
 }
 
-function applyOne(g: KnowledgeGraph, c: GraphChange): string {
+function applyOne(g: KnowledgeGraph, c: GraphChange): string | null {
   switch (c.type) {
     case "rename_graph": {
       g.title = c.title.trim().slice(0, 160);
@@ -252,19 +252,28 @@ function applyOne(g: KnowledgeGraph, c: GraphChange): string {
     }
     case "remove_edges": {
       const removed = removedEdgeSet(g);
+      let actuallyRemoved = 0;
       for (const p of c.pairs) {
         const key = edgeKey(p.fromId, p.toId);
         // 已被去掉过的连线：幂等，不重复记录
         if (removed.has(key)) continue;
+        // P31：验证 pair 是否真的存在于图上——edges 里有，或者是渲染层推导的装饰箭头
+        const existsInEdges = g.edges.some((e) => e.fromId === p.fromId && e.toId === p.toId);
+        const isDecorative = !g.nodes.some((n) => n.id === p.fromId) || !g.nodes.some((n) => n.id === p.toId);
+        const laneFrom = LANE_ARROW_RE.exec(p.fromId);
+        const laneTo = LANE_ARROW_RE.exec(p.toId);
+        const isLaneArrow = Boolean(laneFrom && laneTo);
+        // 既不在 edges 里，也不是装饰箭头/泳道箭头 → 这条连线图上根本不存在，跳过
+        if (!existsInEdges && !isDecorative && !isLaneArrow) continue;
         removed.add(key);
         g.edges = g.edges.filter((e) => !(e.fromId === p.fromId && e.toId === p.toId));
         // 泳道装饰箭头：lane-N → lane-(N+1) 是渲染层推导的，graph.edges 里没有，靠 removedEdges 隐藏
-        const laneFrom = LANE_ARROW_RE.exec(p.fromId);
-        const laneTo = LANE_ARROW_RE.exec(p.toId);
-        if (laneFrom && laneTo) removed.add(edgeKey(`lane-arrow-${laneFrom[0].slice(5)}`, p.toId));
+        if (isLaneArrow && laneFrom && laneTo) removed.add(edgeKey(`lane-arrow-${laneFrom[0].slice(5)}`, p.toId));
+        actuallyRemoved += 1;
       }
+      if (actuallyRemoved === 0) return null; // 一条都没删掉——视为无变更
       g.metadata = { ...g.metadata, removedEdges: [...removed] };
-      return `去掉了 ${c.pairs.length} 条连线（说「恢复连线」可还原）`;
+      return `去掉了 ${actuallyRemoved} 条连线（说「恢复连线」可还原）`;
     }
     case "move_node": {
       const n = findNode(g, c.nodeId)!;
@@ -403,10 +412,17 @@ export function applyChangesAtomically(graph: KnowledgeGraph, changes: GraphChan
   }
   const next = clone(graph);
   const applied: string[] = [];
+  let anyChanged = false;
   try {
     changes.forEach((c, i) => {
-      applied.push(`操作${i + 1}：${applyOne(next, c)}`);
+      const label = applyOne(next, c);
+      if (label === null) return; // 无实际变更（如连线图上不存在）
+      anyChanged = true;
+      applied.push(`操作${i + 1}：${label}`);
     });
+    if (!anyChanged) {
+      return { ok: false, graph, applied: [], issues: [{ changeIndex: -1, message: "没有可执行的变更（连线在图上不存在）" }] };
+    }
     // 结构完整性：边两端节点必须存在；分组 nodeIds 必须存在
     const nodeIds = new Set(next.nodes.map((n) => n.id));
     const badEdge = next.edges.some((e) => !nodeIds.has(e.fromId) || !nodeIds.has(e.toId));

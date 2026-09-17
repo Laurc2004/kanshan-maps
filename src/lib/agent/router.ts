@@ -224,6 +224,38 @@ export function changesFromRules(
   if (route.intent === "structure" && /重新(排版|布局)|重排/.test(text)) {
     return [{ type: "relayout", scope: "all" }];
   }
+  // P31 修复：去掉连线——用户说「去掉连线/箭头」时，如果 edges 为空但有装饰箭头，直接生成 remove_edges
+  // （不经过模型——模型看到空 edges 会说"没有连线可删"）
+  if (route.intent === "structure" && EDGE_OFF_RE.test(text) && !LINK_OFF_RE.test(text)) {
+    const pairs: { fromId: string; toId: string }[] = [];
+    // 数据边：用户指定了目标的按目标匹配，没指定的全删
+    if (ctx.edges.length > 0) {
+      if (route.targetIds.length >= 2) {
+        // 用户说了「A 到 B」：只删这两节点间的边
+        for (const e of ctx.edges) {
+          if ((route.targetIds.includes(e.fromId) && route.targetIds.includes(e.toId))) pairs.push({ fromId: e.fromId, toId: e.toId });
+        }
+      } else {
+        pairs.push(...ctx.edges.map((e) => ({ fromId: e.fromId, toId: e.toId })));
+      }
+    }
+    // 装饰箭头：debate-grid 的胶囊→共识、swimlane 的站间箭头、evidence-tree 的根→分支
+    if (ctx.kind === "debate-grid" && !ctx.removedEdges?.includes("question→debate-consensus")) {
+      pairs.push({ fromId: "question", toId: "debate-consensus" });
+    }
+    if (ctx.kind === "swimlane-roadmap") {
+      for (let i = 0; i < ctx.groups.length - 1; i++) {
+        if (!ctx.removedEdges?.includes(`lane-${i}→lane-${i + 1}`)) pairs.push({ fromId: `lane-${i}`, toId: `lane-${i + 1}` });
+      }
+    }
+    if (ctx.kind === "evidence-tree") {
+      for (const n of ctx.nodes) {
+        if (n.id !== "evidence-root" && !ctx.removedEdges?.includes(`evidence-root→${n.id}`)) pairs.push({ fromId: "evidence-root", toId: n.id });
+      }
+    }
+    if (pairs.length > 0) return [{ type: "remove_edges", pairs, reason: "用户要求去掉连线" }];
+    return null; // 没有可删的连线，交给模型友好回答
+  }
   // P30 修复：恢复连线——从 metadata.removedEdges 里恢复所有被删的连线（确定性，不经过模型）
   if (route.intent === "structure" && EDGE_RESTORE_RE.test(text)) {
     const removed = Array.isArray(ctx.removedEdges) ? ctx.removedEdges : [];

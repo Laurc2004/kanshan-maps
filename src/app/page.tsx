@@ -21,6 +21,7 @@ import { collectKnowledgeSources } from "@/lib/knowledge-assets";
 import { applyPalette, recolorElements } from "@/lib/presentation-controls";
 import { deleteBoard, listSavedBoards, saveBoard, type SavedBoard } from "@/lib/local-library";
 import { newBoardSessionId } from "@/lib/agent-chat-store";
+import { viewpointToKnowledgeGraph, roadmapToKnowledgeGraph } from "@/lib/harness/compat";
 import { addWatermark } from "@/lib/share";
 import type { PaletteId } from "@/lib/harness/types";
 
@@ -126,8 +127,15 @@ export default function Home() {
         const cache = JSON.parse(raw) as BoardCache;
         const g = cache.graph as { viewpoints?: unknown[]; stages?: unknown[]; nodes?: unknown[]; presentation?: unknown } | null;
         if (!cache.graph || !(Array.isArray(g?.viewpoints) || Array.isArray(g?.stages) || (Array.isArray(g?.nodes) && g.presentation))) return;
-        setGraph(cache.graph);
-        graphRef.current = cache.graph;
+        // P31：旧格式缓存（ViewpointGraph/RoadmapGraph）统一转成 KnowledgeGraph，
+        // 否则渲染走 legacy 渲染器，removedEdges/微调全部失效
+        const restoredGraph = (Array.isArray(g?.nodes) && g.presentation)
+          ? cache.graph as GraphState
+          : Array.isArray(g?.stages)
+            ? roadmapToKnowledgeGraph(cache.graph as RoadmapGraph)
+            : viewpointToKnowledgeGraph(cache.graph as ViewpointGraph);
+        setGraph(restoredGraph);
+        graphRef.current = restoredGraph;
         setGraphMode(normalizeUserMode(cache.mode));
         if (cache.question) setQuestion(cache.question);
         if (Array.isArray(cache.items)) setItems(cache.items as SearchResultItem[]);
@@ -584,7 +592,14 @@ export default function Home() {
     setQuestion(`收藏夹「${activeFavlist.title}」${label}`); setMode(nextMode); setPendingItems(picked); setShowProfile(false);
   }, [activeFavlist, favlistItems, selectedFavlistIds]);
   const openSavedBoard = useCallback((board: SavedBoard) => {
-    const restoredGraph = board.graph as GraphState;
+    // P31：旧收藏夹里的图可能是 PR #2 之前保存的 ViewpointGraph/RoadmapGraph 格式，
+    // 恢复时统一转成 KnowledgeGraph——否则渲染走 legacy 渲染器，removedEdges/微调全部失效
+    const rawGraph = board.graph as GraphState;
+    const restoredGraph: GraphState = "presentation" in rawGraph && "nodes" in rawGraph
+      ? rawGraph
+      : "stages" in rawGraph
+        ? roadmapToKnowledgeGraph(rawGraph as RoadmapGraph)
+        : viewpointToKnowledgeGraph(rawGraph as ViewpointGraph);
     const restoredMode: Mode = board.mode === "roadmap" ? "roadmap" : "presentation" in restoredGraph && restoredGraph.kind === "cluster-board" ? "summary" : "compare";
     // 切换画板 = 切换会话：每张保存的图独立会话 id，回到同一张图时对话还在
     const nextSession = newBoardSessionId();

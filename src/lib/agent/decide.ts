@@ -138,12 +138,22 @@ export async function decideAgentAction(
   const nodeList = ctx.nodes.map((n) => `[${n.id}] ${n.label}${n.group ? `（分组:${n.group}）` : ""}`).join("\n");
   const groupList = ctx.groups.map((g) => `[${g.id}] ${g.label || "（大卡片容器）"}（含 ${g.nodeIds.length} 张卡）`).join("\n") || "（无分组）";
   const labelOf = (id: string) => ctx.nodes.find((n) => n.id === id)?.label ?? id;
-  const edgeList = ctx.edges.map((e) => `[${e.fromId}] ${labelOf(e.fromId)} → [${e.toId}] ${labelOf(e.toId)}`).join("\n") || "（无数据型连线；泳道图的站间箭头用 lane-0→lane-1 指代，观点对照图的胶囊→共识连线用 question→debate-consensus 指代）";
+  // 装饰连线也列出来：模型需要知道有哪些箭头可删（edges 为空时不代表没有箭头）
+  const dataEdgeList = ctx.edges.map((e) => `[${e.fromId}] ${labelOf(e.fromId)} → [${e.toId}] ${labelOf(e.toId)}`);
+  const decorativeEdgeHints: string[] = [];
+  if (ctx.kind === "debate-grid") decorativeEdgeHints.push("[question] 问题胶囊 → [debate-consensus] 共识横幅（绿色曲线箭头）");
+  if (ctx.kind === "swimlane-roadmap") {
+    for (let i = 0; i < ctx.groups.length - 1; i++) decorativeEdgeHints.push(`[lane-${i}] 第${i + 1}站 → [lane-${i + 1}] 第${i + 2}站（站间箭头）`);
+  }
+  if (ctx.kind === "evidence-tree") decorativeEdgeHints.push(...ctx.nodes.filter((n) => n.id !== "evidence-root").map((n) => `[evidence-root] 根节点 → [${n.id}] ${n.label}`));
+  const allEdges = [...dataEdgeList, ...decorativeEdgeHints];
+  const edgeList = allEdges.length > 0 ? allEdges.join("\n") : "（无连线）";
+  const removedHint = ctx.removedEdges?.length ? `\n已删除的连线（可恢复）：${ctx.removedEdges.join("、")}` : "";
   const raw = await complete([
     { role: "system", content: CHANGE_INSTRUCTION },
     {
       role: "user",
-      content: `图标题：${ctx.title}\n当前版式：${ctx.kind}${ctx.mode ? `（模式：${ctx.mode}）` : ""}\n可用节点：\n${nodeList}\n可用分组：\n${groupList}\n现有连线：\n${edgeList}\n意图：${route.intent}${route.targetIds.length > 0 ? `\n规则已定位目标：${route.targetIds.join(", ")}` : ""}\n用户要求：${message}`,
+      content: `图标题：${ctx.title}\n当前版式：${ctx.kind}${ctx.mode ? `（模式：${ctx.mode}）` : ""}\n可用节点：\n${nodeList}\n可用分组：\n${groupList}\n现有连线（含装饰箭头）：\n${edgeList}${removedHint}\n意图：${route.intent}${route.targetIds.length > 0 ? `\n规则已定位目标：${route.targetIds.join(", ")}` : ""}\n用户要求：${message}`,
     },
   ]);
   const decision = parseDecision(raw, classifyRisk);
